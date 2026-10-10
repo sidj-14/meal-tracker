@@ -11,7 +11,8 @@ export default async function create(el, params) {
   const s = editing
     ? { name: editing.name, brand: editing.brand || '', basis: '100', servingG: editing.servingG ? String(editing.servingG) : '',
         kcal: String(editing.per100.kcal), p: String(editing.per100.p), c: String(editing.per100.c), f: String(editing.per100.f) }
-    : { name: params.get('name') || '', brand: '', basis: '100', servingG: '', kcal: '', p: '', c: '', f: '' };
+    : { name: params.get('name') || '', brand: params.get('brand') || '', basis: params.get('barcode') ? 'serving' : '100', servingG: '', kcal: '', p: '', c: '', f: '' };
+  const barcode = editing?.barcode || params.get('barcode') || null; // set when you came here from a scan
 
   const numRow = (key, label, unit, color) => `
     <label class="form-row">
@@ -26,6 +27,7 @@ export default async function create(el, params) {
       <span style="width:52px"></span>
     </header>
     <div class="body">
+      ${barcode && !editing ? `<div class="tile stack gap6" style="background:var(--f-bg);color:var(--f-ink)"><span style="font-weight:600;font-size:14px">Barcode ${esc(barcode)}</span><span class="small">Enter the label once. Next time you scan it, this food comes up instantly.</span></div>` : ''}
       <div class="card" style="gap:12px">
         <label class="label">Name<input class="field" data-k="name" value="${esc(s.name)}" placeholder="e.g. Mom's dal" maxlength="60"></label>
         <label class="label">Brand <span class="small" style="margin-top:-6px">(optional)</span><input class="field" data-k="brand" value="${esc(s.brand)}" placeholder="e.g. Trader Joe's" maxlength="40"></label>
@@ -106,7 +108,7 @@ export default async function create(el, params) {
       const v = per100();
       if (!v.kcal) { toast('Enter calories or macros'); return; }
       const food = await saveFood({
-        ...(editing || {}), name, brand: s.brand.trim(), per100: v,
+        ...(editing || {}), name, brand: s.brand.trim(), per100: v, barcode,
         servingG: s.basis === 'serving' ? num(s.servingG) : (editing?.servingG || null),
       });
       toast(editing ? 'Food updated' : 'Food saved');

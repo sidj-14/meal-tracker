@@ -1,14 +1,18 @@
-// Add food — pick from your saved foods (Recent / Favorites / My foods), or create a new one.
-// Choosing a food opens the amount sheet, which adds the entry to today.
+// Add food — pick from your saved foods (Recent / Favorites / My foods), search the USDA
+// database, scan a barcode, or create a food. Choosing a food opens the amount sheet,
+// which adds the entry to today (and saves the food to My foods for next time).
 
 import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, addEntry } from '../store.js';
 import { esc, fmt, r1, sum, scale, dateStr, ICON } from '../util.js';
-import { back, replace, amountSheet, toast } from '../ui.js';
+import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
+import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
+import { openScanner } from '../scanner.js';
 
 export default async function add(el, params) {
-  let foods = await allFoods();
+  const foods = await allFoods();
   let tab = params.get('tab') || (foods.some((f) => f.lastUsed) ? 'recent' : 'mine');
   let query = '';
+  let online = { query: '', loading: false, results: null, error: '' }; // USDA search state
 
   el.innerHTML = `<div class="screen">
     <header class="head row between">
@@ -18,7 +22,7 @@ export default async function add(el, params) {
     </header>
     <div class="stack gap14" style="padding:14px 24px 0">
       <div class="row gap8">
-        <label class="search">${ICON.search}<input type="search" placeholder="Search my foods" aria-label="Search my foods" data-o="q" autocomplete="off"></label>
+        <form class="search" data-o="form" role="search">${ICON.search}<input type="search" enterkeyhint="search" placeholder="Search foods" aria-label="Search foods" data-o="q" autocomplete="off"></form>
         <button class="iconbtn" data-act="scan" aria-label="Scan barcode">${ICON.barcode}</button>
       </div>
       <div class="chips" data-o="tabs"></div>
@@ -36,61 +40,121 @@ export default async function add(el, params) {
     return foods.slice().sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  const row = (f, { saved = true } = {}) => {
+    const g = f.lastGrams || f.servingG || 100;
+    const m = scale(f.per100, g);
+    return `<div class="food-row">
+      <button class="list-item grow" data-act="${saved ? 'pick' : 'pickOnline'}" data-id="${esc(f.id)}">
+        <span class="grow"><span class="name">${esc(f.name)}${f.brand ? ` <span class="muted" style="font-weight:400">· ${esc(f.brand)}</span>` : ''}</span>
+        <span class="sub">${r1(g)} g · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
+        <span class="kcal">${fmt(m.kcal)}</span>
+      </button>
+      ${saved ? `<button class="star ${f.fav ? 'on' : ''}" data-act="fav" data-id="${esc(f.id)}" aria-label="${f.fav ? 'Remove from' : 'Add to'} favorites" aria-pressed="${!!f.fav}">${f.fav ? '★' : '☆'}</button>` : ''}
+      ${saved && tab === 'mine' && !query ? `<a class="star" style="display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:13px;color:var(--muted);width:48px" href="#/create?edit=${esc(f.id)}" aria-label="Edit ${esc(f.name)}">Edit</a>` : ''}
+    </div>`;
+  };
+
+  function onlineSection() {
+    const q = query.trim();
+    if (q.length < 2) return '';
+    if (online.loading) return `<div class="empty" style="padding:16px">Searching the USDA database…</div>`;
+    if (online.error) return `<div class="empty" style="padding:16px">${esc(online.error)}</div>`;
+    if (online.results && online.query === q) {
+      if (!online.results.length) return `<div class="empty" style="padding:16px">No USDA results for “${esc(q)}”.<a class="btn soft sm" href="#/create?name=${encodeURIComponent(q)}">Create it yourself</a></div>`;
+      return `<span class="small muted" style="padding:10px 4px 2px">USDA database · per 100 g</span>${online.results.map((f) => row(f, { saved: false })).join('')}
+        <span class="note center-text" style="padding:8px">Generic foods from USDA FoodData Central. Scan a barcode for packaged products.</span>`;
+    }
+    return `<button class="btn soft" data-act="searchOnline" style="flex-shrink:0">${ICON.search} Search all foods for “${esc(q)}”</button>`;
+  }
+
   function render() {
     const tabBtn = (key, label) => `<button class="chip ${tab === key && !query ? 'on' : ''}" data-act="tab" data-tab="${key}">${label}</button>`;
     $('tabs').innerHTML = tabBtn('recent', 'Recent') + tabBtn('fav', 'Favorites') + tabBtn('mine', 'My foods')
       + '<a class="chip dashed link-chip" href="#/create">Create</a>';
 
     const list = visibleFoods();
-    if (!foods.length) {
-      $('list').innerHTML = `<div class="empty">No foods saved yet.<br>Create one from its nutrition label and it'll be here next time.<a class="btn primary sm" href="#/create">Create a food</a></div>`;
-      return;
+    let html = '';
+    if (query.trim()) {
+      html = (list.length ? `<span class="small muted" style="padding:0 4px 2px">My foods</span>${list.map((f) => row(f)).join('')}` : '') + onlineSection();
+    } else if (!foods.length) {
+      html = `<div class="empty">No foods saved yet.<br>Search above, scan a barcode, or create one from its label.<a class="btn primary sm" href="#/create">Create a food</a></div>`;
+    } else if (!list.length) {
+      html = `<div class="empty">${tab === 'fav' ? 'Tap the ☆ on a food to make it a favorite.' : 'Foods you log will show up here.'}</div>`;
+    } else {
+      html = list.map((f) => row(f)).join('');
     }
-    if (!list.length) {
-      const msg = query ? `No saved food matches “${esc(query)}”.` : tab === 'fav' ? 'Tap the ☆ on a food to make it a favorite.' : 'Foods you log will show up here.';
-      $('list').innerHTML = `<div class="empty">${msg}<a class="btn soft sm" href="#/create${query ? `?name=${encodeURIComponent(query)}` : ''}">Create a food</a></div>`;
-      return;
-    }
-    $('list').innerHTML = list.map((f) => {
-      const g = f.lastGrams || f.servingG || 100;
-      const m = scale(f.per100, g);
-      return `<div class="food-row">
-        <button class="list-item grow" data-act="pick" data-id="${f.id}">
-          <span class="grow"><span class="name">${esc(f.name)}${f.brand ? ` <span class="muted" style="font-weight:400">· ${esc(f.brand)}</span>` : ''}</span>
-          <span class="sub">${r1(g)} g · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
-          <span class="kcal">${fmt(m.kcal)}</span>
-        </button>
-        <button class="star ${f.fav ? 'on' : ''}" data-act="fav" data-id="${f.id}" aria-label="${f.fav ? 'Remove from' : 'Add to'} favorites" aria-pressed="${!!f.fav}">${f.fav ? '★' : '☆'}</button>
-        ${tab === 'mine' && !query ? `<a class="star" style="display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:13px;color:var(--muted);width:48px" href="#/create?edit=${f.id}" aria-label="Edit ${esc(f.name)}">Edit</a>` : ''}
-      </div>`;
-    }).join('');
+    $('list').innerHTML = html;
   }
 
-  async function pick(food) {
+  async function pick(food, note) {
+    const saved = await getFood(food.id); // an online food you've used before keeps your favorite/last amount
+    const f = saved || food;
     const date = dateStr();
     const [targetList, entries] = await Promise.all([getTargets(), entriesOn(date)]);
     const t = targetOn(targetList, date) || { kcal: 0, p: 0 };
     const eaten = sum(entries);
     amountSheet({
-      food, grams: food.lastGrams || food.servingG || 100, mode: 'add',
+      food: f, grams: f.lastGrams || f.servingG || 100, mode: 'add', note: saved ? '' : note,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
       onSubmit: async (grams, group) => {
-        await addEntry(food, grams, group);
-        toast(`Added ${food.name}`);
+        await addEntry(f, grams, group); // also saves the food to My foods
+        toast(`Added ${f.name}`);
         replace('#/today');
       },
     });
   }
 
-  $('q').addEventListener('input', (e) => { query = e.target.value; render(); });
+  async function runSearch() {
+    const q = query.trim();
+    if (q.length < 2) return;
+    online = { query: q, loading: true, results: null, error: '' };
+    render();
+    try {
+      const results = await searchUSDA(q);
+      if (query.trim() === q) online = { query: q, loading: false, results, error: '' };
+    } catch (err) {
+      online = { query: q, loading: false, results: null, error: err instanceof LookupError ? err.message : 'Search failed. Try again.' };
+    }
+    if (query.trim() === q) render();
+  }
+
+  async function handleBarcode(code, setStatus) {
+    // 1) Already saved (scanned before, or created by you with this barcode)?
+    const mine = foods.find((f) => f.barcode === code);
+    if (mine) { closeSheet(); pick(mine); return; }
+    // 2) Look it up online.
+    try {
+      const r = await lookupBarcode(code);
+      if (r.status === 'found') {
+        closeSheet();
+        pick(r.food, `From Open Food Facts · check against the label`);
+      } else {
+        closeSheet();
+        toast(r.status === 'incomplete' ? 'Found it, but nutrition is missing. Add it from the label.' : 'Not in the database yet. Add it from the label once.');
+        const q = new URLSearchParams({ barcode: code });
+        if (r.name) q.set('name', r.name);
+        if (r.brand) q.set('brand', r.brand);
+        go(`#/create?${q}`);
+      }
+    } catch (err) {
+      setStatus(err.message || 'Lookup failed.');
+      setTimeout(() => { closeSheet(); go(`#/create?barcode=${code}`); }, 1800);
+    }
+  }
+
+  $('q').addEventListener('input', (e) => { query = e.target.value; if (online.query !== query.trim()) online = { query: '', loading: false, results: null, error: '' }; render(); });
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); $('q').blur(); runSearch(); });
+
   el.onclick = async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'cancel') back();
-    if (act === 'scan') toast('Barcode scanning is coming in the next update');
+    if (act === 'scan') openScanner(handleBarcode);
+    if (act === 'searchOnline') runSearch();
     if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; render(); }
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));
+    if (act === 'pickOnline') pick(online.results.find((f) => f.id === b.dataset.id), 'From USDA FoodData Central');
     if (act === 'fav') {
       const f = foods.find((x) => x.id === b.dataset.id);
       f.fav = !f.fav;
@@ -100,7 +164,7 @@ export default async function add(el, params) {
   };
 
   render();
-  // Coming back from "Create food" with ?food=<id> opens that food straight away.
+  // Coming back from "Create food" opens the food you just made.
   const preselect = params.get('food') || sessionStorage.getItem('pickFood');
   sessionStorage.removeItem('pickFood');
   if (preselect) { const f = await getFood(preselect); if (f) pick(f); }

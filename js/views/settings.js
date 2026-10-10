@@ -1,6 +1,6 @@
 // Settings — profile, links to targets and meal groups, week start, backup and restore.
 
-import { getProfile, setProfile, getTargets, targetOn, getWeekStart, setKV, getGroups, setGroups, BUILTIN_GROUPS, exportAll, importAll } from '../store.js';
+import { kv, getProfile, setProfile, getTargets, targetOn, getWeekStart, setKV, getGroups, setGroups, BUILTIN_GROUPS, exportAll, importAll } from '../store.js';
 import { esc, fmt, dateStr, ICON } from '../util.js';
 import { tabbar, openSheet, closeSheet, toast } from '../ui.js';
 
@@ -8,6 +8,7 @@ export default async function settings(el) {
   const [profile, targetList, weekStart] = await Promise.all([getProfile(), getTargets(), getWeekStart()]);
   const t = targetOn(targetList, dateStr());
   const groups = await getGroups();
+  const usdaKey = await kv('usdaKey', '');
 
   const input = (key, label, unit, width = 72, mode = 'numeric') => `
     <label class="form-row"><span>${label}</span>
@@ -39,12 +40,18 @@ export default async function settings(el) {
           <div class="seg"><button class="${weekStart === 'mon' ? 'on' : ''}" data-act="ws" data-v="mon">Mon</button><button class="${weekStart === 'sun' ? 'on' : ''}" data-act="ws" data-v="sun">Sun</button></div></div>
       </div>
 
+      <div class="card" style="gap:10px;padding:18px 20px">
+        <span class="title">Food search key <span class="small muted" style="font-weight:400">(optional)</span></span>
+        <span class="note">Food search uses USDA's free database. Without a key it allows about 30 searches an hour. For more, get a free key at <a href="https://api.data.gov/signup/" target="_blank" rel="noopener">api.data.gov/signup</a> (it's emailed to you instantly) and paste it here.</span>
+        <input class="field" data-key="usda" value="${esc(usdaKey)}" placeholder="Paste your key" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="USDA API key">
+      </div>
+
       <div class="card tight">
         <button class="setting-row" data-act="export"><span>Back up my data</span><span class="val">Export ›</span></button>
         <label class="setting-row" style="cursor:pointer"><span>Restore from a backup</span><span class="val">Import ›</span>
           <input type="file" accept="application/json,.json" data-act="import" hidden></label>
       </div>
-      <span class="note center-text">Meal Tracker · version 1.2</span>
+      <span class="note center-text">Meal Tracker · version 1.3</span>
     </div>
     ${tabbar('settings')}
   </div>`;
@@ -56,6 +63,8 @@ export default async function settings(el) {
     $('avatar').textContent = n ? n[0].toUpperCase() : '·';
   };
   showName();
+
+  el.querySelector('[data-key="usda"]').addEventListener('change', async (e) => { await setKV('usdaKey', e.target.value.trim()); toast('Key saved'); });
 
   // Profile fields save as you type.
   el.querySelectorAll('[data-k]').forEach((inp) => {

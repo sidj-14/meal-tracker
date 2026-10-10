@@ -54,7 +54,7 @@ export function toast(msg) {
 // Shows a food, lets you set grams and an optional group, previews macros live.
 // mode 'add'  -> onSubmit(grams, group) adds a new entry
 // mode 'edit' -> onSubmit saves changes, onDelete removes the entry
-export async function amountSheet({ food, grams, group = null, mode = 'add', remaining, onSubmit, onDelete }) {
+export async function amountSheet({ food, grams, group = null, mode = 'add', remaining, note = '', onSubmit, onDelete }) {
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
   const state = { grams: grams || 100, group, adding: false };
@@ -65,6 +65,7 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
       <span class="h3">${esc(food.name)}</span>
       <span class="big"><span data-o="kcal"></span> <small>kcal</small></span>
     </div>
+    ${note ? `<span class="note" style="margin-top:-8px">${esc(note)}</span>` : ''}
     <div class="row gap10 wrap">
       <span class="muted">Amount</span>
       <div class="stepper">
