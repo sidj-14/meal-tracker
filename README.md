@@ -18,7 +18,9 @@ A small, private calorie and macro tracker for iPhone. It shows what's **left** 
 | Create food | Enter a food from its label, per 100 g or per serving. Stored per 100 g. Edit or delete later from *My foods*. |
 | Settings | Profile, targets, meal groups, week start, back up and restore. |
 
-Coming next: Trends (week/month/year), then food search (USDA) and barcode scanning (Open Food Facts).
+| Trends | Week / Month / Year: calories vs your stepped target line (tap a bar for details), days within ±10% of target, protein goal days, macro split vs target. Only logged days count. |
+
+Coming next: food search (USDA) and barcode scanning (Open Food Facts).
 
 ## How the code is organized
 
