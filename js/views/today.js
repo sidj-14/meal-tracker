@@ -1,7 +1,7 @@
 // Today — calories left, macros left, and today's entries.
 
 import { getTargets, targetOn, entriesOn, updateEntry, deleteEntry } from '../store.js';
-import { esc, fmt, r1, sum, dateStr, longDate, ICON } from '../util.js';
+import { esc, fmt, r1, sum, dateStr, longDate, amountText, ICON } from '../util.js';
 import { tabbar, openSheet, closeSheet, amountSheet, toast } from '../ui.js';
 
 const RING = 2 * Math.PI * 56; // circumference of the calorie ring
@@ -70,7 +70,7 @@ export default async function today(el) {
         <div class="entries">
           ${cards.length ? cards.map((card) => {
             const k = sum(card.items).kcal;
-            const sub = card.single ? `${r1(card.items[0].grams)} g · P ${r1(card.items[0].p)} · C ${r1(card.items[0].c)} · F ${r1(card.items[0].f)}` : card.items.map((i) => i.name).join(', ');
+            const sub = card.single ? `${amountText(card.items[0].grams, card.items[0].servingG)} · P ${r1(card.items[0].p)} · C ${r1(card.items[0].c)} · F ${r1(card.items[0].f)}` : card.items.map((i) => i.name).join(', ');
             return `<button class="list-item" data-act="all"><span class="grow"><span class="name">${esc(card.name)}</span><span class="sub">${esc(sub)}</span></span><span class="kcal">${fmt(k)}</span></button>`;
           }).join('') : `<div class="empty">Nothing logged yet today.<br>Tap + below to add food.</div>`}
         </div>
@@ -105,7 +105,7 @@ export default async function today(el) {
         ${sections.map((s) => `<div class="stack gap6">
           <div class="row between baseline" style="padding:8px 0 2px"><span class="title">${esc(s.name)}</span><span class="note" style="font-size:13px">${fmt(sum(s.items).kcal)} kcal</span></div>
           ${s.items.map((i) => `<button class="tile row between" style="border:0;text-align:left;width:100%" data-act="edit" data-id="${i.id}">
-            <span class="stack gap6"><span style="font-weight:500;font-size:14px">${esc(i.name)}</span><span class="note">${r1(i.grams)} g · P ${r1(i.p)} · C ${r1(i.c)} · F ${r1(i.f)}</span></span>
+            <span class="stack gap6"><span style="font-weight:500;font-size:14px">${esc(i.name)}</span><span class="note">${amountText(i.grams, i.servingG)} · P ${r1(i.p)} · C ${r1(i.c)} · F ${r1(i.f)}</span></span>
             <span style="font-weight:600;font-size:14px">${fmt(i.kcal)}</span></button>`).join('')}
         </div>`).join('')}
         <span class="note center-text">Tap an item to change the amount or group, or to delete it.</span>
@@ -119,7 +119,7 @@ export default async function today(el) {
       if (b.dataset.act === 'edit') {
         const entry = entries.find((x) => x.id === b.dataset.id);
         amountSheet({
-          food: { name: entry.name, per100: entry.per100 }, grams: entry.grams, group: entry.group, mode: 'edit',
+          food: { name: entry.name, per100: entry.per100, servingG: entry.servingG }, grams: entry.grams, group: entry.group, mode: 'edit',
           onSubmit: async (grams, group) => { await updateEntry(entry, grams, group); closeSheet(); toast('Saved'); today(el); },
           onDelete: async () => { await deleteEntry(entry.id); closeSheet(); toast('Deleted'); today(el); },
         });

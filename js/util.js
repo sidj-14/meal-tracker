@@ -15,6 +15,12 @@ export const longDate = (s) => parseDate(s).toLocaleDateString('en-US', { weekda
 export const fmt = (n) => Math.round(n).toLocaleString('en-US');
 export const r1 = (n) => Math.round(n * 10) / 10;
 export function num(v) { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; }
+// "1.5 servings · 82 g" when the food has a serving size, otherwise "82 g".
+export function amountText(grams, servingG) {
+  if (!servingG) return `${r1(grams)} g`;
+  const n = Math.round((grams / servingG) * 100) / 100;
+  return `${n} serving${n === 1 ? '' : 's'} · ${r1(grams)} g`;
+}
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // ----- Nutrition math -----

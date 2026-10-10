@@ -4,12 +4,12 @@
 // Strategy: "network first". When online, always fetch the latest files (so updates
 // you push to GitHub show up right away) and keep a copy. When offline, use the copy.
 
-const CACHE = 'meal-tracker-v3'; // change this name with each release
+const CACHE = 'meal-tracker-v4'; // change this name with each release
 const APP_SHELL = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',
   './js/app.js', './js/db.js', './js/store.js', './js/ui.js', './js/util.js',
   './js/views/welcome.js', './js/views/targets.js', './js/views/today.js', './js/views/week.js',
-  './js/food-api.js', './js/scanner.js', './js/views/add.js', './js/views/create.js', './js/views/trends.js', './js/views/settings.js',
+  './js/food-api.js', './js/scanner.js', './js/label-parser.js', './js/label-reader.js', './js/views/add.js', './js/views/create.js', './js/views/trends.js', './js/views/settings.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
 

@@ -3,7 +3,7 @@
 // which adds the entry to today (and saves the food to My foods for next time).
 
 import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, addEntry } from '../store.js';
-import { esc, fmt, r1, sum, scale, dateStr, ICON } from '../util.js';
+import { esc, fmt, r1, sum, scale, dateStr, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
 import { openScanner } from '../scanner.js';
@@ -46,7 +46,7 @@ export default async function add(el, params) {
     return `<div class="food-row">
       <button class="list-item grow" data-act="${saved ? 'pick' : 'pickOnline'}" data-id="${esc(f.id)}">
         <span class="grow"><span class="name">${esc(f.name)}${f.brand ? ` <span class="muted" style="font-weight:400">· ${esc(f.brand)}</span>` : ''}</span>
-        <span class="sub">${r1(g)} g · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
+        <span class="sub">${amountText(g, f.servingG)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
         <span class="kcal">${fmt(m.kcal)}</span>
       </button>
       ${saved ? `<button class="star ${f.fav ? 'on' : ''}" data-act="fav" data-id="${esc(f.id)}" aria-label="${f.fav ? 'Remove from' : 'Add to'} favorites" aria-pressed="${!!f.fav}">${f.fav ? '★' : '☆'}</button>` : ''}

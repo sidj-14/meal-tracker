@@ -15,7 +15,8 @@ A small, private calorie and macro tracker for iPhone. It shows what's **left** 
 | Today | Calories left (ring), macros left (bars), today's entries. Tap an entry to change its amount or group, or delete it. |
 | Week | Week budget left (Monday start, changeable), per-day bars against each day's target, average macros. |
 | Add food | Recent / Favorites / My foods, search your foods and the USDA database, scan a barcode (Open Food Facts), amount in grams with live macros, optional group (Breakfast, Lunch, Dinner or your own). Foods you log from search or scans are saved to My foods. |
-| Create food | Enter a food from its label, per 100 g or per serving. Stored per 100 g. Edit or delete later from *My foods*. |
+| Create food | Enter a food from its label, per 100 g or per serving, or **fill it from a photo of the label** (OCR on the phone). Stored per 100 g. Edit or delete later from *My foods*. |
+| Servings | Foods with a serving size can be logged in **servings** (half-serving steps) or grams. |
 | Settings | Profile, targets, meal groups, week start, back up and restore. |
 | Trends | Week / Month / Year: calories vs your stepped target line (tap a bar for details), days within ±10% of target, protein goal days, macro split vs target. Only logged days count. |
 
@@ -23,6 +24,7 @@ A small, private calorie and macro tracker for iPhone. It shows what's **left** 
 
 - **Barcodes → [Open Food Facts](https://world.openfoodfacts.org)**, a free crowd-sourced database of packaged foods. No key needed. If a product isn't there, you enter its label once and the barcode is saved with your food.
 - **Search → [USDA FoodData Central](https://fdc.nal.usda.gov)**, generic foods like "bananas, raw". Works with the shared `DEMO_KEY` (about 30 searches an hour); paste your own free key from [api.data.gov/signup](https://api.data.gov/signup/) in Settings for more.
+- **Label photos** are read on the phone with [Tesseract.js](https://github.com/naptha/tesseract.js) (Apache-2.0), saved in `vendor/tesseract`. The first use downloads about 7 MB; after that it works offline. `js/label-parser.js` turns the recognized text into numbers.
 - The scanner uses [ZXing](https://github.com/zxing-js/browser) (MIT license), saved in `vendor/` so it doesn't depend on another website.
 
 ## How the code is organized

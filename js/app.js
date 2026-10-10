@@ -46,9 +46,11 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(console.error);
   });
   // When a new version takes over, reload once so you see it immediately.
+  // (Skip on the very first visit, when there was no old version to replace.)
+  const hadOldVersion = !!navigator.serviceWorker.controller;
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloaded) return;
+    if (reloaded || !hadOldVersion) return;
     reloaded = true;
     location.reload();
   });

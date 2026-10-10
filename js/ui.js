@@ -57,7 +57,11 @@ export function toast(msg) {
 export async function amountSheet({ food, grams, group = null, mode = 'add', remaining, note = '', onSubmit, onDelete }) {
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
-  const state = { grams: grams || 100, group, adding: false };
+  const servingG = food.servingG || null;
+  // Foods with a known serving size can be logged in servings (e.g. 1.5) or grams; everything is saved as grams.
+  const state = { grams: grams || 100, group, adding: false, unit: servingG ? 'serv' : 'g' };
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const shown = () => (state.unit === 'serv' ? r2(state.grams / servingG) : r1(state.grams));
 
   const sheet = openSheet(`<div class="sheet-pad">
     <div class="handle"></div>
@@ -66,15 +70,19 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
       <span class="big"><span data-o="kcal"></span> <small>kcal</small></span>
     </div>
     ${note ? `<span class="note" style="margin-top:-8px">${esc(note)}</span>` : ''}
-    <div class="row gap10 wrap">
-      <span class="muted">Amount</span>
-      <div class="stepper">
-        <button data-act="dec" aria-label="Decrease by 10 grams">−</button>
-        <input data-o="grams" inputmode="decimal" value="${state.grams}" aria-label="Amount in grams">
-        <button data-act="inc" aria-label="Increase by 10 grams">+</button>
+    <div class="stack gap6">
+      <div class="row gap10 wrap">
+        <span class="muted">Amount</span>
+        <div class="stepper">
+          <button data-act="dec" aria-label="Less">−</button>
+          <input data-o="grams" inputmode="decimal" value="${shown()}" aria-label="Amount">
+          <button data-act="inc" aria-label="More">+</button>
+        </div>
+        ${servingG
+          ? '<div class="seg" data-o="units"><button data-act="unit" data-u="serv">servings</button><button data-act="unit" data-u="g">g</button></div>'
+          : '<span class="muted">g</span>'}
       </div>
-      <span class="muted">g</span>
-      ${food.servingG ? `<button class="chip" data-act="serving">1 serving · ${r1(food.servingG)} g</button>` : ''}
+      ${servingG ? '<span class="note" data-o="equiv"></span>' : ''}
     </div>
     <div class="tiles">
       <div class="t-p">Protein<b data-o="p"></b></div>
@@ -95,6 +103,12 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
 
   function update() {
     const m = scale(food.per100, state.grams);
+    if (servingG) {
+      sheet.querySelectorAll('[data-act="unit"]').forEach((b) => b.classList.toggle('on', b.dataset.u === state.unit));
+      $('equiv').textContent = state.unit === 'serv'
+        ? `= ${r1(state.grams)} g · 1 serving is ${r1(servingG)} g`
+        : `= ${r2(state.grams / servingG)} servings · 1 serving is ${r1(servingG)} g`;
+    }
     $('kcal').textContent = fmt(m.kcal);
     $('p').textContent = `${r1(m.p)} g`;
     $('c').textContent = `${r1(m.c)} g`;
@@ -122,17 +136,29 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
 
   const gramsInput = $('grams');
   gramsInput.addEventListener('focus', () => gramsInput.select());
-  gramsInput.addEventListener('input', () => { state.grams = num(gramsInput.value); update(); });
+  gramsInput.addEventListener('input', () => {
+    const v = num(gramsInput.value);
+    state.grams = state.unit === 'serv' ? v * servingG : v;
+    update();
+  });
 
   sheet.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'inc' || act === 'dec') {
-      state.grams = Math.max(0, Math.round(state.grams + (act === 'inc' ? 10 : -10)));
-      gramsInput.value = state.grams; update();
-    } else if (act === 'serving') {
-      state.grams = r1(food.servingG); gramsInput.value = state.grams; update();
+      const dir = act === 'inc' ? 1 : -1;
+      if (state.unit === 'serv') {
+        // half-serving steps, snapping to the nearest half
+        const s = Math.max(0, Math.round((state.grams / servingG) * 2 + dir) / 2);
+        state.grams = s * servingG;
+      } else {
+        state.grams = Math.max(0, Math.round(state.grams + dir * 10));
+      }
+      gramsInput.value = shown(); update();
+    } else if (act === 'unit') {
+      state.unit = b.dataset.u;
+      gramsInput.value = shown(); update();
     } else if (act === 'group') {
       state.group = state.group === b.dataset.g ? null : b.dataset.g; // tap again to ungroup
       renderGroups();
