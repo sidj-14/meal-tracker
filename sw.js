@@ -4,7 +4,7 @@
 // Strategy: "network first". When online, always fetch the latest files (so updates
 // you push to GitHub show up right away) and keep a copy. When offline, use the copy.
 
-const CACHE = 'meal-tracker-v1';
+const CACHE = 'meal-tracker-v2'; // change this name with each release
 const APP_SHELL = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',
   './js/app.js', './js/db.js', './js/store.js', './js/ui.js', './js/util.js',
@@ -29,7 +29,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    fetch(event.request)
+    // cache: 'no-cache' = always ask the server if there's a newer file (skips the browser's 10-minute reuse)
+    fetch(event.request, { cache: 'no-cache' })
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE).then((cache) => cache.put(event.request, copy));

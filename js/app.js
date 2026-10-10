@@ -42,7 +42,16 @@ route();
 
 // Service worker = a small script the browser keeps around so the app opens offline.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(console.error));
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(console.error);
+  });
+  // When a new version takes over, reload once so you see it immediately.
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
 }
 // Ask the browser not to clear our data when storage is low.
 navigator.storage?.persist?.();
