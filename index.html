@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover lets the app draw under the iPhone notch; we pad with safe-area insets in CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Meal Tracker</title>
+  <meta name="description" content="Track calories and macros: what's left today and this week.">
+  <meta name="theme-color" content="#F5F4F1">
+
+  <!-- iOS: run full-screen when opened from the Home Screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Meal Tracker">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="shell">
+    <!-- Each screen (view) renders into #app. Bottom sheets render into #sheet-root on top. -->
+    <main id="app" aria-live="polite"></main>
+    <div id="sheet-root"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
+  <!-- type="module" lets us use import/export between JS files without a build step -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
