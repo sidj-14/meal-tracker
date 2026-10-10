@@ -48,7 +48,7 @@ export function parseLabel(text) {
   const per100ml = /per\s*100\s*ml/i.test(all) && /kcal/i.test(all);
   const per100 = per100ml || (/per\s*100\s*g/i.test(all) && /kcal/i.test(all)); // EU-style label
 
-  const out = { basis: per100ml ? 'ml100' : per100 ? 'g100' : 'serving', servingQty: null, servingUnit: null, kcal: null, p: null, c: null, f: null, found: 0 };
+  const out = { basis: per100 ? 'g100' : 'serving', servingQty: null, servingUnit: null, kcal: null, p: null, c: null, f: null, found: 0 };
 
   // Serving size: "2/3 cup (55g)", "1 can (355 mL)", "8 fl oz (240mL)", "1 oz (28g)", "Serving Size 30 g".
   // Prefer the metric amount in brackets; otherwise take g / ml / fl oz / oz as printed.

@@ -1,6 +1,6 @@
-// Create food — enter a food from its nutrition label: per 100 g, per 100 ml, or per serving.
-// Serving sizes can be in g, ml, oz or fl oz. Everything is stored per 100 g (or per 100 ml
-// for drinks) so any amount can be scaled later.
+// Create food — enter a food from its nutrition label: per 100 g (default) or per serving.
+// Serving sizes can be in g, ml, oz or fl oz. Everything is stored per 100 g so any amount
+// can be scaled later. (Drinks with a serving in ml / fl oz are logged in ml, treating 1 ml ≈ 1 g.)
 // Also used to edit an existing food: '#/create?edit=<id>'.
 
 import { getFood, saveFood, deleteFood } from '../store.js';
@@ -10,13 +10,13 @@ import { readLabel } from '../label-reader.js';
 
 export default async function create(el, params) {
   const editing = params.get('edit') ? await getFood(params.get('edit')) : null;
-  // basis: 'g100' (per 100 g), 'ml100' (per 100 ml) or 'serving' (per serving, as US labels print it)
+  // basis: 'g100' (per 100 g, the default) or 'serving' (per serving, as US labels print it)
   const s = editing
-    ? { name: editing.name, brand: editing.brand || '', basis: editing.baseUnit === 'ml' ? 'ml100' : 'g100',
+    ? { name: editing.name, brand: editing.brand || '', basis: 'g100',
         servingQty: editing.servingG ? String(r1(editing.servingQty || editing.servingG)) : '',
         servingUnit: editing.servingUnit || editing.baseUnit || 'g',
         kcal: String(editing.per100.kcal), p: String(editing.per100.p), c: String(editing.per100.c), f: String(editing.per100.f) }
-    : { name: params.get('name') || '', brand: params.get('brand') || '', basis: params.get('barcode') ? 'serving' : 'g100',
+    : { name: params.get('name') || '', brand: params.get('brand') || '', basis: 'g100',
         servingQty: '', servingUnit: 'g', kcal: '', p: '', c: '', f: '' };
   const barcode = editing?.barcode || params.get('barcode') || null; // set when you came here from a scan
 
@@ -46,7 +46,7 @@ export default async function create(el, params) {
         </label>
         <span class="note center-text" data-o="photoStatus" hidden></span>
         <span class="title">Nutrition values are</span>
-        <div class="seg" data-o="seg" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+        <div class="seg" data-o="seg" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr))"></div>
         <div data-o="servingRow"></div>
         ${numRow('kcal', 'Calories', 'kcal')}
         ${numRow('p', 'Protein', 'g', 'var(--p)')}
@@ -63,7 +63,7 @@ export default async function create(el, params) {
   const $ = (k) => el.querySelector(`[data-o="${k}"]`);
 
   // Base unit: millilitres for drinks (per 100 ml, or a serving in ml / fl oz), otherwise grams.
-  const baseUnit = () => (s.basis === 'ml100' ? 'ml' : s.basis === 'g100' ? 'g' : baseOf(s.servingUnit));
+  const baseUnit = () => (num(s.servingQty) ? baseOf(s.servingUnit) : 'g');
   const servingBase = () => toBase(num(s.servingQty), s.servingUnit); // serving size in g or ml
 
   function per100() {
@@ -78,7 +78,7 @@ export default async function create(el, params) {
   function renderBasis() {
     const isServing = s.basis === 'serving';
     const opt = (v, label) => `<button class="${s.basis === v ? 'on' : ''}" data-act="basis" data-v="${v}" style="padding:8px 0">${label}</button>`;
-    $('seg').innerHTML = opt('serving', 'Per serving') + opt('g100', 'Per 100 g') + opt('ml100', 'Per 100 ml');
+    $('seg').innerHTML = opt('g100', 'Per 100 g') + opt('serving', 'Per serving');
     // Serving size: required for "per serving", optional otherwise (lets you log in servings later)
     $('servingRow').innerHTML = `
       <div class="form-row">
