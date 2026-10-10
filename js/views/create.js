@@ -1,18 +1,23 @@
-// Create food — enter a food from its nutrition label, per 100 g or per serving.
-// Everything is stored per 100 g so any amount can be scaled later.
+// Create food — enter a food from its nutrition label: per 100 g, per 100 ml, or per serving.
+// Serving sizes can be in g, ml, oz or fl oz. Everything is stored per 100 g (or per 100 ml
+// for drinks) so any amount can be scaled later.
 // Also used to edit an existing food: '#/create?edit=<id>'.
 
 import { getFood, saveFood, deleteFood } from '../store.js';
-import { esc, fmt, r1, num, kcalFromMacros } from '../util.js';
+import { esc, fmt, r1, num, kcalFromMacros, SERVING_UNITS, baseOf, toBase } from '../util.js';
 import { back, toast } from '../ui.js';
 import { readLabel } from '../label-reader.js';
 
 export default async function create(el, params) {
   const editing = params.get('edit') ? await getFood(params.get('edit')) : null;
+  // basis: 'g100' (per 100 g), 'ml100' (per 100 ml) or 'serving' (per serving, as US labels print it)
   const s = editing
-    ? { name: editing.name, brand: editing.brand || '', basis: '100', servingG: editing.servingG ? String(editing.servingG) : '',
+    ? { name: editing.name, brand: editing.brand || '', basis: editing.baseUnit === 'ml' ? 'ml100' : 'g100',
+        servingQty: editing.servingG ? String(r1(editing.servingQty || editing.servingG)) : '',
+        servingUnit: editing.servingUnit || editing.baseUnit || 'g',
         kcal: String(editing.per100.kcal), p: String(editing.per100.p), c: String(editing.per100.c), f: String(editing.per100.f) }
-    : { name: params.get('name') || '', brand: params.get('brand') || '', basis: params.get('barcode') ? 'serving' : '100', servingG: '', kcal: '', p: '', c: '', f: '' };
+    : { name: params.get('name') || '', brand: params.get('brand') || '', basis: params.get('barcode') ? 'serving' : 'g100',
+        servingQty: '', servingUnit: 'g', kcal: '', p: '', c: '', f: '' };
   const barcode = editing?.barcode || params.get('barcode') || null; // set when you came here from a scan
 
   const numRow = (key, label, unit, color) => `
@@ -40,10 +45,8 @@ export default async function create(el, params) {
           <input type="file" accept="image/*" data-o="photo" hidden>
         </label>
         <span class="note center-text" data-o="photoStatus" hidden></span>
-        <div class="row between">
-          <span class="title">Nutrition</span>
-          <div class="seg" data-o="seg"></div>
-        </div>
+        <span class="title">Nutrition values are</span>
+        <div class="seg" data-o="seg" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr))"></div>
         <div data-o="servingRow"></div>
         ${numRow('kcal', 'Calories', 'kcal')}
         ${numRow('p', 'Protein', 'g', 'var(--p)')}
@@ -51,7 +54,7 @@ export default async function create(el, params) {
         ${numRow('f', 'Fat', 'g', 'var(--f)')}
         <div class="tile stack gap6"><span class="small" style="color:#4A4E4B" data-o="check"></span><span class="note" data-o="per100"></span></div>
       </div>
-      <span class="note center-text" style="padding:0 12px">Saved to My foods. When you log it, enter any amount in grams and the macros scale automatically.</span>
+      <span class="note center-text" style="padding:0 12px">Saved to My foods. When you log it, enter servings or any amount in g / ml and the macros scale automatically.</span>
       ${editing ? '<button class="btn text danger" data-act="delete">Delete this food</button>' : ''}
     </div>
     <div style="flex-shrink:0;padding:12px 24px calc(16px + var(--bottom))"><button class="btn primary" style="width:100%" data-act="save">Save food</button></div>
@@ -59,9 +62,13 @@ export default async function create(el, params) {
 
   const $ = (k) => el.querySelector(`[data-o="${k}"]`);
 
+  // Base unit: millilitres for drinks (per 100 ml, or a serving in ml / fl oz), otherwise grams.
+  const baseUnit = () => (s.basis === 'ml100' ? 'ml' : s.basis === 'g100' ? 'g' : baseOf(s.servingUnit));
+  const servingBase = () => toBase(num(s.servingQty), s.servingUnit); // serving size in g or ml
+
   function per100() {
     const isServing = s.basis === 'serving';
-    const sg = num(s.servingG);
+    const sg = servingBase();
     const factor = isServing ? (sg ? 100 / sg : 0) : 1;
     const p = num(s.p), c = num(s.c), f = num(s.f);
     const kcal = num(s.kcal) || kcalFromMacros(p, c, f); // blank calories -> computed from macros
@@ -70,9 +77,19 @@ export default async function create(el, params) {
 
   function renderBasis() {
     const isServing = s.basis === 'serving';
-    $('seg').innerHTML = `<button class="${isServing ? '' : 'on'}" data-act="basis" data-v="100">Per 100 g</button><button class="${isServing ? 'on' : ''}" data-act="basis" data-v="serving">Per serving</button>`;
-    $('servingRow').innerHTML = isServing ? numRow('servingG', 'Serving size', 'g') : '';
-    $('servingRow').hidden = !isServing;
+    const opt = (v, label) => `<button class="${s.basis === v ? 'on' : ''}" data-act="basis" data-v="${v}" style="padding:8px 0">${label}</button>`;
+    $('seg').innerHTML = opt('serving', 'Per serving') + opt('g100', 'Per 100 g') + opt('ml100', 'Per 100 ml');
+    // Serving size: required for "per serving", optional otherwise (lets you log in servings later)
+    $('servingRow').innerHTML = `
+      <div class="form-row">
+        <span>Serving size${isServing ? '' : ' <span class="small muted">(optional)</span>'}</span>
+        <span class="row gap6">
+          <input class="num-in" style="width:72px" data-k="servingQty" inputmode="decimal" value="${esc(s.servingQty)}" aria-label="Serving size">
+          <select class="unit-select" data-k="servingUnit" aria-label="Serving size unit">
+            ${SERVING_UNITS.map((u) => `<option value="${u}" ${s.servingUnit === u ? 'selected' : ''}>${u}</option>`).join('')}
+          </select>
+        </span>
+      </div>`;
     bindInputs();
     update();
   }
@@ -86,9 +103,11 @@ export default async function create(el, params) {
     else msg = Math.abs(k - fromMacros) <= Math.max(10, k * 0.1) ? `Calories match the macros (${fmt(fromMacros)} kcal) ✓` : `Heads up: macros add up to ${fmt(fromMacros)} kcal, you entered ${fmt(k)}`;
     $('check').textContent = msg;
     const v = per100();
+    const b = baseUnit();
+    const conv = num(s.servingQty) && s.servingUnit !== b ? ` (${num(s.servingQty)} ${s.servingUnit} = ${Math.round(servingBase())} ${b})` : '';
     $('per100').textContent = s.basis === 'serving'
-      ? (num(s.servingG) ? `Stored per 100 g: ${fmt(v.kcal)} kcal · P ${v.p} · C ${v.c} · F ${v.f}` : 'Enter the serving size in grams (it\'s on the label next to the serving).')
-      : 'US labels list values per serving. Switch to "Per serving" to type them as printed.';
+      ? (num(s.servingQty) ? `Stored per 100 ${b}: ${fmt(v.kcal)} kcal · P ${v.p} · C ${v.c} · F ${v.f}${conv}` : 'Enter the serving size from the label (g, ml, oz or fl oz).')
+      : 'US labels list values per serving. Pick "Per serving" to type them as printed.';
   }
 
   // ----- Fill from a photo of the Nutrition Facts label -----
@@ -108,7 +127,7 @@ export default async function create(el, params) {
         return;
       }
       s.basis = r.basis;
-      if (r.servingG) s.servingG = String(r.servingG);
+      if (r.servingQty) { s.servingQty = String(r.servingQty); s.servingUnit = r.servingUnit; }
       for (const k of got) s[k] = String(r[k]);
       renderBasis();
       for (const k of ['kcal', 'p', 'c', 'f']) {
@@ -116,10 +135,9 @@ export default async function create(el, params) {
         input.value = s[k];
         input.style.boxShadow = r[k] !== null ? 'inset 0 0 0 2px var(--accent)' : 'inset 0 0 0 2px var(--over)';
       }
-      const sg = el.querySelector('[data-k="servingG"]');
-      if (sg) sg.style.boxShadow = r.servingG ? 'inset 0 0 0 2px var(--accent)' : 'inset 0 0 0 2px var(--over)';
+      if (r.basis === 'serving') el.querySelector('[data-k="servingQty"]').style.boxShadow = r.servingQty ? 'inset 0 0 0 2px var(--accent)' : 'inset 0 0 0 2px var(--over)';
       const missing = ['kcal', 'p', 'c', 'f'].filter((k) => r[k] === null).map((k) => ({ kcal: 'calories', p: 'protein', c: 'carbs', f: 'fat' }[k]));
-      if (r.basis === 'serving' && !r.servingG) missing.push('serving size');
+      if (r.basis === 'serving' && !r.servingQty) missing.push('serving size');
       status.textContent = missing.length
         ? `Filled what I could read (green). Please add: ${missing.join(', ')}.`
         : 'Filled from the photo (green). Check each number against the label before saving.';
@@ -134,6 +152,7 @@ export default async function create(el, params) {
   function bindInputs() {
     el.querySelectorAll('[data-k]').forEach((input) => {
       input.oninput = () => { s[input.dataset.k] = input.value; input.style.boxShadow = ''; update(); };
+      if (input.tagName === 'SELECT') input.onchange = input.oninput;
     });
   }
 
@@ -151,12 +170,13 @@ export default async function create(el, params) {
     if (act === 'save') {
       const name = s.name.trim();
       if (!name) { toast('Give the food a name'); return; }
-      if (s.basis === 'serving' && !num(s.servingG)) { toast('Enter the serving size in grams'); return; }
+      if (s.basis === 'serving' && !num(s.servingQty)) { toast('Enter the serving size'); return; }
       const v = per100();
       if (!v.kcal) { toast('Enter calories or macros'); return; }
       const food = await saveFood({
-        ...(editing || {}), name, brand: s.brand.trim(), per100: v, barcode,
-        servingG: s.basis === 'serving' ? num(s.servingG) : (editing?.servingG || null),
+        ...(editing || {}), name, brand: s.brand.trim(), per100: v, barcode, baseUnit: baseUnit(),
+        servingG: num(s.servingQty) ? servingBase() : null,     // serving in g or ml
+        servingQty: num(s.servingQty) || null, servingUnit: num(s.servingQty) ? s.servingUnit : null, // as printed
       });
       toast(editing ? 'Food updated' : 'Food saved');
       if (editing) back('#/add?tab=mine');

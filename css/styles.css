@@ -112,6 +112,7 @@ h1, h2, h3 { margin: 0; }
 .field { height: 46px; border: 0; border-radius: 12px; background: var(--bg); padding: 0 14px; font-size: 16px; outline: none; width: 100%; min-width: 0; }
 .num-in { width: 84px; height: 40px; border: 0; border-radius: 10px; background: var(--bg); text-align: right; padding: 0 10px; font-size: 16px; font-weight: 600; outline: none; }
 .num-in.sm { width: 56px; }
+.unit-select { height: 40px; border: 0; border-radius: 10px; background: var(--bg); padding: 0 8px; font-size: 16px; color: var(--ink); width: 72px; }
 .unit { font-size: 13px; color: var(--muted); width: 30px; }
 .form-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }

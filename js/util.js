@@ -15,11 +15,28 @@ export const longDate = (s) => parseDate(s).toLocaleDateString('en-US', { weekda
 export const fmt = (n) => Math.round(n).toLocaleString('en-US');
 export const r1 = (n) => Math.round(n * 10) / 10;
 export function num(v) { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; }
-// "1.5 servings · 82 g" when the food has a serving size, otherwise "82 g".
-export function amountText(grams, servingG) {
-  if (!servingG) return `${r1(grams)} g`;
-  const n = Math.round((grams / servingG) * 100) / 100;
-  return `${n} serving${n === 1 ? '' : 's'} · ${r1(grams)} g`;
+// ----- Units -----
+// Each food is measured in a base unit: grams (solids) or millilitres (drinks).
+// Serving sizes can be typed in g, ml, oz or fl oz and are converted to that base unit.
+export const SERVING_UNITS = ['g', 'ml', 'oz', 'fl oz'];
+const TO_BASE = { g: 1, ml: 1, oz: 28.3495, 'fl oz': 29.5735 };
+export const baseOf = (unit) => (unit === 'ml' || unit === 'fl oz' ? 'ml' : 'g');
+export const toBase = (qty, unit) => qty * (TO_BASE[unit] || 1);
+
+// "1 serving is 8 fl oz (237 ml)" style label for a food's serving.
+export function servingLabel(food) {
+  const base = food.baseUnit || 'g';
+  if (food.servingUnit && food.servingUnit !== base && food.servingQty) {
+    return `${r1(food.servingQty)} ${food.servingUnit} (${Math.round(food.servingG)} ${base})`;
+  }
+  return `${r1(food.servingG)} ${base}`;
+}
+
+// "1.5 servings · 82.5 g" when there's a serving size, otherwise "82.5 g".
+export function amountText(amount, servingG, base = 'g') {
+  if (!servingG) return `${r1(amount)} ${base}`;
+  const n = Math.round((amount / servingG) * 100) / 100;
+  return `${n} serving${n === 1 ? '' : 's'} · ${r1(amount)} ${base}`;
 }
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 

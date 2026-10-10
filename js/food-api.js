@@ -21,7 +21,7 @@ const n = (v) => { const x = parseFloat(v); return Number.isFinite(x) && x >= 0 
 export async function lookupBarcode(code) {
   let res;
   try {
-    res = await fetch(`${OFF}${encodeURIComponent(code)}?fields=product_name,product_name_en,brands,nutriments,serving_quantity`);
+    res = await fetch(`${OFF}${encodeURIComponent(code)}?fields=product_name,product_name_en,brands,nutriments,serving_quantity,serving_quantity_unit`);
   } catch {
     throw new LookupError("Couldn't reach the food database. Check your internet connection.");
   }
@@ -46,6 +46,7 @@ export async function lookupBarcode(code) {
       id: `off-${code}`, name, brand, barcode: code, source: 'Open Food Facts',
       per100: { kcal: r1(kcal), p: r1(prot), c: r1(carb), f: r1(fat) },
       servingG: n(p.serving_quantity) || null,
+      baseUnit: /ml/i.test(p.serving_quantity_unit || '') ? 'ml' : 'g',
     },
   };
 }

@@ -1,7 +1,7 @@
 // ui.js — shared pieces of interface: navigation, tab bar, bottom sheets, toast,
 // and the "amount" sheet used both for adding and for editing an entry.
 
-import { esc, fmt, r1, num, scale, ICON } from './util.js';
+import { esc, fmt, r1, num, scale, servingLabel, ICON } from './util.js';
 import { BUILTIN_GROUPS, getGroups, setGroups } from './store.js';
 
 // ---------- navigation ----------
@@ -58,6 +58,7 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
   const servingG = food.servingG || null;
+  const base = food.baseUnit || 'g'; // 'g' or 'ml'
   // Foods with a known serving size can be logged in servings (e.g. 1.5) or grams; everything is saved as grams.
   const state = { grams: grams || 100, group, adding: false, unit: servingG ? 'serv' : 'g' };
   const r2 = (x) => Math.round(x * 100) / 100;
@@ -79,8 +80,8 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
           <button data-act="inc" aria-label="More">+</button>
         </div>
         ${servingG
-          ? '<div class="seg" data-o="units"><button data-act="unit" data-u="serv">servings</button><button data-act="unit" data-u="g">g</button></div>'
-          : '<span class="muted">g</span>'}
+          ? `<div class="seg" data-o="units"><button data-act="unit" data-u="serv">servings</button><button data-act="unit" data-u="g">${base}</button></div>`
+          : `<span class="muted">${base}</span>`}
       </div>
       ${servingG ? '<span class="note" data-o="equiv"></span>' : ''}
     </div>
@@ -106,8 +107,8 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
     if (servingG) {
       sheet.querySelectorAll('[data-act="unit"]').forEach((b) => b.classList.toggle('on', b.dataset.u === state.unit));
       $('equiv').textContent = state.unit === 'serv'
-        ? `= ${r1(state.grams)} g · 1 serving is ${r1(servingG)} g`
-        : `= ${r2(state.grams / servingG)} servings · 1 serving is ${r1(servingG)} g`;
+        ? `= ${r1(state.grams)} ${base} · 1 serving is ${servingLabel(food)}`
+        : `= ${r2(state.grams / servingG)} servings · 1 serving is ${servingLabel(food)}`;
     }
     $('kcal').textContent = fmt(m.kcal);
     $('p').textContent = `${r1(m.p)} g`;

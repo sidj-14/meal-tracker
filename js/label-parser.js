@@ -45,21 +45,23 @@ function fixGram(hit, perServing) {
 export function parseLabel(text) {
   const lines = clean(text).split('\n').map((l) => l.trim()).filter(Boolean);
   const all = lines.join(' ');
-  const per100 = /per\s*100\s*(?:g|ml)/i.test(all) && /kcal/i.test(all); // EU-style label
+  const per100ml = /per\s*100\s*ml/i.test(all) && /kcal/i.test(all);
+  const per100 = per100ml || (/per\s*100\s*g/i.test(all) && /kcal/i.test(all)); // EU-style label
 
-  const out = { basis: per100 ? '100' : 'serving', servingG: null, kcal: null, p: null, c: null, f: null, found: 0 };
+  const out = { basis: per100ml ? 'ml100' : per100 ? 'g100' : 'serving', servingQty: null, servingUnit: null, kcal: null, p: null, c: null, f: null, found: 0 };
 
-  // Serving size in grams, e.g. "Serving size 2/3 cup (55g)" or "Serving Size 30 g"
+  // Serving size: "2/3 cup (55g)", "1 can (355 mL)", "8 fl oz (240mL)", "1 oz (28g)", "Serving Size 30 g".
+  // Prefer the metric amount in brackets; otherwise take g / ml / fl oz / oz as printed.
   const sizeLine = lines.findIndex((l) => /serving\s*size/i.test(l));
   if (sizeLine >= 0) {
-    const text2 = `${lines[sizeLine]} ${lines[sizeLine + 1] || ''}`;
-    const g = text2.match(new RegExp(`\\(?${NUM}\\s*(?:g|grams?|ml)\\b\\)?`, 'i'));
-    if (g) out.servingG = parseFloat(g[1]);
-    else {
-      // "(55g)" often reads as "(559)": a number ending in 9 inside brackets on the serving line
-      const g9 = text2.match(/\((\d+)9\)/);
-      if (g9) out.servingG = parseFloat(g9[1]);
-    }
+    const t = `${lines[sizeLine]} ${lines[sizeLine + 1] || ''}`.replace(/serving\s*size/i, '');
+    const unitOf = (u) => { u = u.toLowerCase().replace(/\s|\./g, ''); return u === 'floz' ? 'fl oz' : u.startsWith('g') ? 'g' : u === 'ml' ? 'ml' : 'oz'; };
+    const metric = t.match(new RegExp(`\\(\\s*${NUM}\\s*(g|grams?|ml)\\s*\\)`, 'i'));
+    const any = t.match(new RegExp(`${NUM}\\s*(fl\\.?\\s*oz|ml|g|grams?|oz)\\b`, 'i'));
+    const g9 = t.match(/\((\d+)9\)/); // "(55g)" often reads as "(559)"
+    const hit = metric || any;
+    if (hit) { out.servingQty = parseFloat(hit[1]); out.servingUnit = unitOf(hit[2]); }
+    else if (g9) { out.servingQty = parseFloat(g9[1]); out.servingUnit = 'g'; }
   }
 
   // Calories: US "Calories 230"; EU "Energy 1046 kJ / 250 kcal"
@@ -78,6 +80,6 @@ export function parseLabel(text) {
   out.c = fixGram(after(lines, /total\s*carb\w*|carbohydrates?|\bcarbs?\b/i, { skip: /fib(er|re)/i }), perServing);
   out.p = fixGram(after(lines, /protein/i), perServing);
 
-  out.found = ['kcal', 'p', 'c', 'f'].filter((k) => out[k] !== null).length + (out.servingG ? 1 : 0);
+  out.found = ['kcal', 'p', 'c', 'f'].filter((k) => out[k] !== null).length + (out.servingQty ? 1 : 0);
   return out;
 }

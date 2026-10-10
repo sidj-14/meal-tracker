@@ -46,7 +46,7 @@ export default async function add(el, params) {
     return `<div class="food-row">
       <button class="list-item grow" data-act="${saved ? 'pick' : 'pickOnline'}" data-id="${esc(f.id)}">
         <span class="grow"><span class="name">${esc(f.name)}${f.brand ? ` <span class="muted" style="font-weight:400">· ${esc(f.brand)}</span>` : ''}</span>
-        <span class="sub">${amountText(g, f.servingG)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
+        <span class="sub">${amountText(g, f.servingG, f.baseUnit)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
         <span class="kcal">${fmt(m.kcal)}</span>
       </button>
       ${saved ? `<button class="star ${f.fav ? 'on' : ''}" data-act="fav" data-id="${esc(f.id)}" aria-label="${f.fav ? 'Remove from' : 'Add to'} favorites" aria-pressed="${!!f.fav}">${f.fav ? '★' : '☆'}</button>` : ''}
