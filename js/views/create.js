@@ -11,13 +11,16 @@ import { readLabel } from '../label-reader.js';
 export default async function create(el, params) {
   const editing = params.get('edit') ? await getFood(params.get('edit')) : null;
   // basis: 'g100' (per 100 g, the default) or 'serving' (per serving, as US labels print it)
+  const counted = editing?.baseUnit === 'pc'; // a "pieces" food with no weight: show it per serving
+  const toServing = counted ? (editing.servingG || 1) / 100 : 1; // per 100 pieces -> per serving
   const s = editing
-    ? { name: editing.name, brand: editing.brand || '', basis: 'g100',
+    ? { name: editing.name, brand: editing.brand || '', basis: counted ? 'serving' : 'g100',
         servingQty: editing.servingG ? String(r1(editing.servingQty || editing.servingG)) : '',
         servingUnit: editing.servingUnit || editing.baseUnit || 'g',
-        kcal: String(editing.per100.kcal), p: String(editing.per100.p), c: String(editing.per100.c), f: String(editing.per100.f) }
+        servingWeight: editing.servingUnit === 'pieces' && !counted ? String(r1(editing.servingG)) : '',
+        kcal: String(r1(editing.per100.kcal * toServing)), p: String(r1(editing.per100.p * toServing)), c: String(r1(editing.per100.c * toServing)), f: String(r1(editing.per100.f * toServing)) }
     : { name: params.get('name') || '', brand: params.get('brand') || '', basis: 'g100',
-        servingQty: '', servingUnit: 'g', kcal: '', p: '', c: '', f: '' };
+        servingQty: '', servingUnit: 'g', servingWeight: '', kcal: '', p: '', c: '', f: '' };
   const barcode = editing?.barcode || params.get('barcode') || null; // set when you came here from a scan
 
   const numRow = (key, label, unit, color) => `
@@ -62,9 +65,15 @@ export default async function create(el, params) {
 
   const $ = (k) => el.querySelector(`[data-o="${k}"]`);
 
-  // Base unit: millilitres for drinks (per 100 ml, or a serving in ml / fl oz), otherwise grams.
-  const baseUnit = () => (num(s.servingQty) ? baseOf(s.servingUnit) : 'g');
-  const servingBase = () => toBase(num(s.servingQty), s.servingUnit); // serving size in g or ml
+  // Base unit: ml for drinks (serving in ml / fl oz), 'pc' for counted things with no weight, else grams.
+  const isPieces = () => s.servingUnit === 'pieces';
+  const baseUnit = () => {
+    if (!num(s.servingQty)) return 'g';
+    if (isPieces()) return num(s.servingWeight) ? 'g' : 'pc';
+    return baseOf(s.servingUnit);
+  };
+  // One serving in base units (g, ml, or number of pieces)
+  const servingBase = () => (isPieces() ? (num(s.servingWeight) || num(s.servingQty)) : toBase(num(s.servingQty), s.servingUnit));
 
   function per100() {
     const isServing = s.basis === 'serving';
@@ -85,11 +94,16 @@ export default async function create(el, params) {
         <span>Serving size${isServing ? '' : ' <span class="small muted">(optional)</span>'}</span>
         <span class="row gap6">
           <input class="num-in" style="width:72px" data-k="servingQty" inputmode="decimal" value="${esc(s.servingQty)}" aria-label="Serving size">
-          <select class="unit-select" data-k="servingUnit" aria-label="Serving size unit">
+          <select class="unit-select" data-k="servingUnit" aria-label="Serving size unit" style="width:88px">
             ${SERVING_UNITS.map((u) => `<option value="${u}" ${s.servingUnit === u ? 'selected' : ''}>${u}</option>`).join('')}
           </select>
         </span>
-      </div>`;
+      </div>
+      ${isPieces() ? `<div class="form-row" style="margin-top:12px">
+        <span>Weight of serving <span class="small muted">(optional)</span></span>
+        <span class="row gap6"><input class="num-in" style="width:72px" data-k="servingWeight" inputmode="decimal" value="${esc(s.servingWeight)}" aria-label="Weight of one serving in grams"><span class="unit" style="width:88px;padding-left:8px">g</span></span>
+      </div>
+      <span class="note" style="display:block;margin-top:6px">E.g. "2 cookies (28 g)": 2 pieces, 28 g. No weight? Leave it blank and log by pieces.</span>` : ''}`;
     bindInputs();
     update();
   }
@@ -104,10 +118,16 @@ export default async function create(el, params) {
     $('check').textContent = msg;
     const v = per100();
     const b = baseUnit();
-    const conv = num(s.servingQty) && s.servingUnit !== b ? ` (${num(s.servingQty)} ${s.servingUnit} = ${Math.round(servingBase())} ${b})` : '';
-    $('per100').textContent = s.basis === 'serving'
-      ? (num(s.servingQty) ? `Stored per 100 ${b}: ${fmt(v.kcal)} kcal · P ${v.p} · C ${v.c} · F ${v.f}${conv}` : 'Enter the serving size from the label (g, ml, oz or fl oz).')
-      : 'US labels list values per serving. Pick "Per serving" to type them as printed.';
+    const conv = num(s.servingQty) && s.servingUnit !== b && b !== 'pc' ? ` (${num(s.servingQty)} ${s.servingUnit} = ${Math.round(servingBase())} ${b})` : '';
+    if (s.basis === 'g100' && isPieces() && num(s.servingQty) && !num(s.servingWeight)) {
+      $('per100').textContent = 'To use "Per 100 g" with pieces, enter the weight of a serving, or switch to "Per serving".';
+    } else if (s.basis === 'serving') {
+      $('per100').textContent = !num(s.servingQty) ? 'Enter the serving size from the label (g, ml, oz, fl oz or pieces).'
+        : b === 'pc' ? `Per piece: ${fmt(v.kcal / 100)} kcal · P ${r1(v.p / 100)} · C ${r1(v.c / 100)} · F ${r1(v.f / 100)}`
+        : `Stored per 100 ${b}: ${fmt(v.kcal)} kcal · P ${v.p} · C ${v.c} · F ${v.f}${conv}`;
+    } else {
+      $('per100').textContent = 'US labels list values per serving. Pick "Per serving" to type them as printed.';
+    }
   }
 
   // ----- Fill from a photo of the Nutrition Facts label -----
@@ -127,7 +147,7 @@ export default async function create(el, params) {
         return;
       }
       s.basis = r.basis;
-      if (r.servingQty) { s.servingQty = String(r.servingQty); s.servingUnit = r.servingUnit; }
+      if (r.servingQty) { s.servingQty = String(r.servingQty); s.servingUnit = r.servingUnit; s.servingWeight = r.servingWeight ? String(r.servingWeight) : ''; }
       for (const k of got) s[k] = String(r[k]);
       renderBasis();
       for (const k of ['kcal', 'p', 'c', 'f']) {
@@ -152,7 +172,7 @@ export default async function create(el, params) {
   function bindInputs() {
     el.querySelectorAll('[data-k]').forEach((input) => {
       input.oninput = () => { s[input.dataset.k] = input.value; input.style.boxShadow = ''; update(); };
-      if (input.tagName === 'SELECT') input.onchange = input.oninput;
+      if (input.tagName === 'SELECT') input.onchange = () => { s.servingUnit = input.value; renderBasis(); };
     });
   }
 
@@ -171,11 +191,12 @@ export default async function create(el, params) {
       const name = s.name.trim();
       if (!name) { toast('Give the food a name'); return; }
       if (s.basis === 'serving' && !num(s.servingQty)) { toast('Enter the serving size'); return; }
+      if (s.basis === 'g100' && isPieces() && num(s.servingQty) && !num(s.servingWeight)) { toast('Enter the serving weight, or pick "Per serving"'); return; }
       const v = per100();
       if (!v.kcal) { toast('Enter calories or macros'); return; }
       const food = await saveFood({
         ...(editing || {}), name, brand: s.brand.trim(), per100: v, barcode, baseUnit: baseUnit(),
-        servingG: num(s.servingQty) ? servingBase() : null,     // serving in g or ml
+        servingG: num(s.servingQty) ? servingBase() : null,     // serving in g, ml or pieces
         servingQty: num(s.servingQty) || null, servingUnit: num(s.servingQty) ? s.servingUnit : null, // as printed
       });
       toast(editing ? 'Food updated' : 'Food saved');

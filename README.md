@@ -14,9 +14,9 @@ A small, private calorie and macro tracker for iPhone. It shows what's **left** 
 | Targets | Daily calories + grams of protein/carbs/fat. Checks that macros add up to your calories. Changes apply from today onward; history is kept. |
 | Today | Calories left (ring), macros left (bars), today's entries. Tap an entry to change its amount or group, or delete it. |
 | Week | Week budget left (Monday start, changeable), per-day bars against each day's target, average macros. |
-| Add food | Recent / Favorites / My foods, search your foods and the USDA database, scan a barcode (Open Food Facts), amount in grams with live macros, optional group (Breakfast, Lunch, Dinner or your own). Foods you log from search or scans are saved to My foods. |
+| Add food | **Recent** shows what you logged on previous days, by day and group: tap to add again (same amount and group, both changeable) or **Add all** for a whole meal. Also Favorites / My foods, search your foods and the USDA database, scan a barcode (Open Food Facts), amount in grams with live macros, optional group (Breakfast, Lunch, Dinner or your own). Foods you log from search or scans are saved to My foods. |
 | Create food | Enter a food from its label, per 100 g or per serving, or **fill it from a photo of the label** (OCR on the phone). Stored per 100 g. Edit or delete later from *My foods*. |
-| Servings | Foods with a serving size can be logged in **servings** (half-serving steps) or grams. |
+| Servings | Serving sizes in g, ml, oz, fl oz or **pieces** (e.g. "2 cookies", weight optional). Log in pieces, servings or g/ml. |
 | Settings | Profile, targets, meal groups, week start, back up and restore. |
 | Trends | Week / Month / Year: calories vs your stepped target line (tap a bar for details), days within ±10% of target, protein goal days, macro split vs target. Only logged days count. |
 

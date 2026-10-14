@@ -16,27 +16,50 @@ export const fmt = (n) => Math.round(n).toLocaleString('en-US');
 export const r1 = (n) => Math.round(n * 10) / 10;
 export function num(v) { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; }
 // ----- Units -----
-// Each food is measured in a base unit: grams (solids) or millilitres (drinks).
-// Serving sizes can be typed in g, ml, oz or fl oz and are converted to that base unit.
-export const SERVING_UNITS = ['g', 'ml', 'oz', 'fl oz'];
+// Each food is measured in a base unit:
+//   'g'  grams (most foods)       'ml' millilitres (drinks with a serving in ml / fl oz)
+//   'pc' pieces (things you count, like cookies, when the weight isn't known)
+// Serving sizes can be typed in g, ml, oz, fl oz or pieces and are converted to the base unit.
+export const SERVING_UNITS = ['g', 'ml', 'oz', 'fl oz', 'pieces'];
 const TO_BASE = { g: 1, ml: 1, oz: 28.3495, 'fl oz': 29.5735 };
 export const baseOf = (unit) => (unit === 'ml' || unit === 'fl oz' ? 'ml' : 'g');
 export const toBase = (qty, unit) => qty * (TO_BASE[unit] || 1);
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const r2 = (n) => Math.round(n * 100) / 100;
 
-// "1 serving is 8 fl oz (237 ml)" style label for a food's serving.
+// The ways you can enter an amount for a food. `per` = how many base units one of these is.
+export function amountUnits(food) {
+  const base = food.baseUnit || 'g';
+  const units = [];
+  const pieceSize = food.servingUnit === 'pieces' && food.servingQty ? food.servingG / food.servingQty : null;
+  if (base === 'pc' || pieceSize) units.push({ key: 'pc', label: 'pieces', per: base === 'pc' ? 1 : pieceSize, step: 1 });
+  if (food.servingG && !(base === 'pc' && food.servingQty === 1)) units.push({ key: 'serv', label: 'servings', per: food.servingG, step: 0.5 });
+  if (base !== 'pc') units.push({ key: 'base', label: base, per: 1, step: 10 });
+  return units;
+}
+
+// "8 fl oz (237 ml)", "2 pieces (28 g)", "55 g": how big one serving is.
 export function servingLabel(food) {
   const base = food.baseUnit || 'g';
+  if (food.servingUnit === 'pieces' && food.servingQty) {
+    return plural(r1(food.servingQty), 'piece') + (base === 'pc' ? '' : ` (${Math.round(food.servingG)} ${base})`);
+  }
   if (food.servingUnit && food.servingUnit !== base && food.servingQty) {
     return `${r1(food.servingQty)} ${food.servingUnit} (${Math.round(food.servingG)} ${base})`;
   }
   return `${r1(food.servingG)} ${base}`;
 }
 
-// "1.5 servings · 82.5 g" when there's a serving size, otherwise "82.5 g".
-export function amountText(amount, servingG, base = 'g') {
-  if (!servingG) return `${r1(amount)} ${base}`;
-  const n = Math.round((amount / servingG) * 100) / 100;
-  return `${n} serving${n === 1 ? '' : 's'} · ${r1(amount)} ${base}`;
+// How an amount reads in lists: "2 pieces · 28 g", "1.5 servings · 82.5 g", "150 g".
+// `item` is a food or an entry (anything with baseUnit / servingG / servingUnit / servingQty).
+export function amountText(amount, item = {}) {
+  const base = item.baseUnit || 'g';
+  if (base === 'pc') return plural(r2(amount), 'piece');
+  if (item.servingUnit === 'pieces' && item.servingQty && item.servingG) {
+    return `${plural(r2(amount / (item.servingG / item.servingQty)), 'piece')} · ${r1(amount)} ${base}`;
+  }
+  if (!item.servingG) return `${r1(amount)} ${base}`;
+  return `${plural(r2(amount / item.servingG), 'serving')} · ${r1(amount)} ${base}`;
 }
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 

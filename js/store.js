@@ -60,7 +60,8 @@ export async function addEntry(food, grams, group) {
   const entry = {
     id: uid(), date: dateStr(), createdAt: Date.now(),
     foodId: food.id, name: food.name, per100: { ...food.per100 },
-    grams, servingG: food.servingG || null, baseUnit: food.baseUnit || 'g', group: group || null, ...scale(food.per100, grams),
+    grams, servingG: food.servingG || null, baseUnit: food.baseUnit || 'g',
+    servingQty: food.servingQty || null, servingUnit: food.servingUnit || null, group: group || null, ...scale(food.per100, grams),
   };
   await db.put('entries', entry);
   await db.put('foods', { ...food, lastUsed: Date.now(), lastGrams: grams });

@@ -48,7 +48,7 @@ export function parseLabel(text) {
   const per100ml = /per\s*100\s*ml/i.test(all) && /kcal/i.test(all);
   const per100 = per100ml || (/per\s*100\s*g/i.test(all) && /kcal/i.test(all)); // EU-style label
 
-  const out = { basis: per100 ? 'g100' : 'serving', servingQty: null, servingUnit: null, kcal: null, p: null, c: null, f: null, found: 0 };
+  const out = { basis: per100 ? 'g100' : 'serving', servingQty: null, servingUnit: null, servingWeight: null, kcal: null, p: null, c: null, f: null, found: 0 };
 
   // Serving size: "2/3 cup (55g)", "1 can (355 mL)", "8 fl oz (240mL)", "1 oz (28g)", "Serving Size 30 g".
   // Prefer the metric amount in brackets; otherwise take g / ml / fl oz / oz as printed.
@@ -62,6 +62,14 @@ export function parseLabel(text) {
     const hit = metric || any;
     if (hit) { out.servingQty = parseFloat(hit[1]); out.servingUnit = unitOf(hit[2]); }
     else if (g9) { out.servingQty = parseFloat(g9[1]); out.servingUnit = 'g'; }
+    // Counted servings: "2 cookies (28g)", "1 bar (40g)", "3 crackers". Measures like cup/tbsp aren't pieces.
+    const count = t.match(/(?:^|\s)(\d+(?:\.\d+)?)\s+([a-z]{3,})/i);
+    const measure = /^(cups?|tbsps?|tsps?|tablespoons?|teaspoons?|oz|fl|grams?|ml|container|package|servings?)$/i;
+    if (count && !measure.test(count[2]) && (!out.servingUnit || out.servingUnit === 'g')) {
+      out.servingWeight = out.servingUnit === 'g' ? out.servingQty : null;
+      out.servingQty = parseFloat(count[1]);
+      out.servingUnit = 'pieces';
+    }
   }
 
   // Calories: US "Calories 230"; EU "Energy 1046 kJ / 250 kcal"

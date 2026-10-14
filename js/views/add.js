@@ -1,16 +1,18 @@
-// Add food — pick from your saved foods (Recent / Favorites / My foods), search the USDA
-// database, scan a barcode, or create a food. Choosing a food opens the amount sheet,
-// which adds the entry to today (and saves the food to My foods for next time).
+// Add food — re-add something you logged before (Recent, by day), pick from Favorites or
+// My foods, search the USDA database, scan a barcode, or create a food. Choosing a food opens
+// the amount sheet, which adds the entry to today (and saves the food to My foods for next time).
 
-import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, addEntry } from '../store.js';
-import { esc, fmt, r1, sum, scale, dateStr, amountText, ICON } from '../util.js';
+import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry } from '../store.js';
+import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
 import { scanFromPhoto } from '../scanner.js';
 
 export default async function add(el, params) {
-  const foods = await allFoods();
-  let tab = params.get('tab') || (foods.some((f) => f.lastUsed) ? 'recent' : 'mine');
+  const today = dateStr();
+  const [foods, history] = await Promise.all([allFoods(), entriesBetween(addDays(today, -21), today)]);
+  history.sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1));
+  let tab = params.get('tab') || (history.length ? 'recent' : 'mine');
   let query = '';
   let online = { query: '', loading: false, results: null, error: '' }; // USDA search state
 
@@ -36,7 +38,6 @@ export default async function add(el, params) {
   function visibleFoods() {
     const q = query.trim().toLowerCase();
     if (q) return foods.filter((f) => `${f.name} ${f.brand || ''}`.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-    if (tab === 'recent') return foods.filter((f) => f.lastUsed).sort((a, b) => b.lastUsed - a.lastUsed).slice(0, 30);
     if (tab === 'fav') return foods.filter((f) => f.fav).sort((a, b) => a.name.localeCompare(b.name));
     return foods.slice().sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -47,7 +48,7 @@ export default async function add(el, params) {
     return `<div class="food-row">
       <button class="list-item grow" data-act="${saved ? 'pick' : 'pickOnline'}" data-id="${esc(f.id)}">
         <span class="grow"><span class="name">${esc(f.name)}${f.brand ? ` <span class="muted" style="font-weight:400">· ${esc(f.brand)}</span>` : ''}</span>
-        <span class="sub">${amountText(g, f.servingG, f.baseUnit)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
+        <span class="sub">${amountText(g, f)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
         <span class="kcal">${fmt(m.kcal)}</span>
       </button>
       ${saved ? `<button class="star ${f.fav ? 'on' : ''}" data-act="fav" data-id="${esc(f.id)}" aria-label="${f.fav ? 'Remove from' : 'Add to'} favorites" aria-pressed="${!!f.fav}">${f.fav ? '★' : '☆'}</button>` : ''}
@@ -68,6 +69,41 @@ export default async function add(el, params) {
     return `<button class="btn soft" data-act="searchOnline" style="flex-shrink:0">${ICON.search} Search all foods for “${esc(q)}”</button>`;
   }
 
+  // ----- Recent: what you logged on previous days, by day and group, ready to add again -----
+  function dayLabel(d) {
+    if (d === today) return 'Today';
+    if (d === addDays(today, -1)) return 'Yesterday';
+    return longDate(d);
+  }
+  function recentSection() {
+    if (!history.length) return '<div class="empty">Things you log will show up here by day, so you can add them again with one tap.</div>';
+    const days = [];
+    for (const e of history) {
+      let day = days[days.length - 1];
+      if (!day || day.date !== e.date) { day = { date: e.date, groups: new Map(), loose: [] }; days.push(day); }
+      if (e.group) { if (!day.groups.has(e.group)) day.groups.set(e.group, []); day.groups.get(e.group).push(e); } else day.loose.push(e);
+    }
+    const item = (e) => `<button class="list-item" data-act="again" data-id="${esc(e.id)}">
+      <span class="grow"><span class="name">${esc(e.name)}</span><span class="sub">${amountText(e.grams, e)} · P ${r1(e.p)} · C ${r1(e.c)} · F ${r1(e.f)}</span></span>
+      <span class="kcal">${fmt(e.kcal)}</span></button>`;
+    return days.slice(0, 14).map((day) => `
+      <div class="stack gap8" style="flex-shrink:0">
+        <span class="small muted" style="padding:6px 4px 0;text-transform:uppercase;letter-spacing:.04em">${dayLabel(day.date)}</span>
+        ${[...day.groups].map(([g, items]) => `
+          <div class="row between" style="padding:2px 4px 0"><span class="title" style="font-size:14px">${esc(g)} <span class="muted" style="font-weight:400">· ${fmt(sum(items).kcal)} kcal</span></span>
+            <button class="chip" data-act="againAll" data-date="${day.date}" data-g="${esc(g)}">Add all</button></div>
+          ${items.map(item).join('')}`).join('')}
+        ${day.loose.map(item).join('')}
+      </div>`).join('')
+      + '<span class="note center-text" style="padding:8px">Tap an item to add it to today. You can change the amount and group before adding.</span>';
+  }
+
+  // A logged entry carries a copy of its food, so it can be re-added even if the food was deleted.
+  const foodOf = async (e) => (await getFood(e.foodId)) || {
+    id: e.foodId, name: e.name, per100: e.per100, servingG: e.servingG, baseUnit: e.baseUnit,
+    servingQty: e.servingQty, servingUnit: e.servingUnit,
+  };
+
   function render() {
     const tabBtn = (key, label) => `<button class="chip ${tab === key && !query ? 'on' : ''}" data-act="tab" data-tab="${key}">${label}</button>`;
     $('tabs').innerHTML = tabBtn('recent', 'Recent') + tabBtn('fav', 'Favorites') + tabBtn('mine', 'My foods')
@@ -77,6 +113,8 @@ export default async function add(el, params) {
     let html = '';
     if (query.trim()) {
       html = (list.length ? `<span class="small muted" style="padding:0 4px 2px">My foods</span>${list.map((f) => row(f)).join('')}` : '') + onlineSection();
+    } else if (tab === 'recent') {
+      html = recentSection();
     } else if (!foods.length) {
       html = `<div class="empty">No foods saved yet.<br>Search above, scan a barcode, or create one from its label.<a class="btn primary sm" href="#/create">Create a food</a></div>`;
     } else if (!list.length) {
@@ -87,7 +125,7 @@ export default async function add(el, params) {
     $('list').innerHTML = html;
   }
 
-  async function pick(food, note) {
+  async function pick(food, note, preset = {}) {
     const saved = await getFood(food.id); // an online food you've used before keeps your favorite/last amount
     const f = saved || food;
     const date = dateStr();
@@ -95,7 +133,8 @@ export default async function add(el, params) {
     const t = targetOn(targetList, date) || { kcal: 0, p: 0 };
     const eaten = sum(entries);
     amountSheet({
-      food: f, grams: f.lastGrams || f.servingG || 100, mode: 'add', note: saved ? '' : note,
+      food: f, grams: preset.grams || f.lastGrams || f.servingG || null, group: preset.group || null,
+      mode: 'add', note: saved ? '' : note,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
       onSubmit: async (grams, group) => {
         await addEntry(f, grams, group); // also saves the food to My foods
@@ -160,6 +199,16 @@ export default async function add(el, params) {
     if (act === 'searchOnline') runSearch();
     if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; render(); }
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));
+    if (act === 'again') {
+      const e = history.find((x) => x.id === b.dataset.id);
+      pick(await foodOf(e), '', { grams: e.grams, group: e.group });
+    }
+    if (act === 'againAll') {
+      const items = history.filter((x) => x.date === b.dataset.date && x.group === b.dataset.g).reverse(); // original order
+      for (const e of items) await addEntry(await foodOf(e), e.grams, e.group);
+      toast(`Added ${b.dataset.g} (${items.length} item${items.length === 1 ? '' : 's'})`);
+      replace('#/today');
+    }
     if (act === 'pickOnline') pick(online.results.find((f) => f.id === b.dataset.id), 'From USDA FoodData Central');
     if (act === 'fav') {
       const f = foods.find((x) => x.id === b.dataset.id);
