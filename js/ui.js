@@ -2,7 +2,7 @@
 // and the "amount" sheet used both for adding and for editing an entry.
 
 import { esc, fmt, r1, num, scale, servingLabel, amountUnits, ICON } from './util.js';
-import { BUILTIN_GROUPS, getGroups, setGroups } from './store.js';
+import { BUILTIN_GROUPS, getGroups, setGroups, getFood, saveFood } from './store.js';
 
 // ---------- navigation ----------
 // Screens are addressed by the part of the URL after '#', e.g. '#/today'.
@@ -65,6 +65,7 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
   const r2 = (x) => Math.round(x * 100) / 100;
   const shown = () => (state.unit === 'base' ? r1 : r2)(state.grams / unitOf(state.unit).per);
   const hasServing = !!food.servingG;
+  state.fav = !!food.fav;
 
   const sheet = openSheet(`<div class="sheet-pad">
     <div class="handle"></div>
@@ -72,6 +73,7 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
       <span class="h3">${esc(food.name)}</span>
       <span class="big"><span data-o="kcal"></span> <small>kcal</small></span>
     </div>
+    ${mode === 'add' && food.id ? '<button class="fav-btn" data-act="fav" data-o="fav"></button>' : ''}
     ${note ? `<span class="note" style="margin-top:-8px">${esc(note)}</span>` : ''}
     <div class="stack gap6">
       <div class="row gap10 wrap">
@@ -123,6 +125,8 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
         + (pLeft > 0 ? `${fmt(pLeft)} g protein left` : 'protein goal met') + ' today';
     }
     $('submit').textContent = mode === 'edit' ? 'Save' : (state.group ? `Add to ${state.group}` : 'Add to today');
+    const fav = $('fav');
+    if (fav) { fav.textContent = state.fav ? '★ Favorite' : '☆ Add to favorites'; fav.classList.toggle('on', state.fav); fav.setAttribute('aria-pressed', state.fav); }
   }
 
   function renderGroups() {
@@ -153,6 +157,14 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
       const count = Math.max(0, Math.round(state.grams / u.per / u.step + (act === 'inc' ? 1 : -1)) * u.step);
       state.grams = count * u.per;
       gramsInput.value = shown(); update();
+    } else if (act === 'fav') {
+      // Favorites live on the saved food; a food from search/scan gets saved to My foods here.
+      state.fav = !state.fav;
+      const saved = (await getFood(food.id)) || food;
+      await saveFood({ ...saved, fav: state.fav });
+      food.fav = state.fav;
+      toast(state.fav ? 'Added to Favorites' : 'Removed from Favorites');
+      update();
     } else if (act === 'unit') {
       state.unit = b.dataset.u;
       gramsInput.value = shown(); update();

@@ -10,7 +10,7 @@ import { scanFromPhoto } from '../scanner.js';
 
 export default async function add(el, params) {
   const today = dateStr();
-  const [foods, history] = await Promise.all([allFoods(), entriesBetween(addDays(today, -21), today)]);
+  let [foods, history] = await Promise.all([allFoods(), entriesBetween(addDays(today, -21), today)]);
   history.sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1));
   let tab = params.get('tab') || (history.length ? 'recent' : 'mine');
   let query = '';
@@ -118,7 +118,7 @@ export default async function add(el, params) {
     } else if (!foods.length) {
       html = `<div class="empty">No foods saved yet.<br>Search above, scan a barcode, or create one from its label.<a class="btn primary sm" href="#/create">Create a food</a></div>`;
     } else if (!list.length) {
-      html = `<div class="empty">${tab === 'fav' ? 'Tap the ☆ on a food to make it a favorite.' : 'Foods you log will show up here.'}</div>`;
+      html = `<div class="empty">${tab === 'fav' ? 'No favorites yet. Open any food and tap “☆ Add to favorites”, or tap the ☆ next to a food in My foods.' : 'Foods you log will show up here.'}</div>`;
     } else {
       html = list.map((f) => row(f)).join('');
     }
@@ -197,7 +197,7 @@ export default async function add(el, params) {
     const act = b.dataset.act;
     if (act === 'cancel') back();
     if (act === 'searchOnline') runSearch();
-    if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; render(); }
+    if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; foods = await allFoods(); render(); } // re-read: favorites may have changed
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));
     if (act === 'again') {
       const e = history.find((x) => x.id === b.dataset.id);
