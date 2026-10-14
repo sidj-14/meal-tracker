@@ -6,7 +6,7 @@ import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, addEntry 
 import { esc, fmt, r1, sum, scale, dateStr, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
-import { openScanner } from '../scanner.js';
+import { scanFromPhoto } from '../scanner.js';
 
 export default async function add(el, params) {
   const foods = await allFoods();
@@ -23,7 +23,8 @@ export default async function add(el, params) {
     <div class="stack gap14" style="padding:14px 24px 0">
       <div class="row gap8">
         <form class="search" data-o="form" role="search">${ICON.search}<input type="search" enterkeyhint="search" placeholder="Search foods" aria-label="Search foods" data-o="q" autocomplete="off"></form>
-        <button class="iconbtn" data-act="scan" aria-label="Scan barcode">${ICON.barcode}</button>
+        <label class="iconbtn" aria-label="Scan barcode" style="cursor:pointer">${ICON.barcode}
+          <input type="file" accept="image/*" capture="environment" hidden data-o="scan"></label>
       </div>
       <div class="chips" data-o="tabs"></div>
     </div>
@@ -143,6 +144,12 @@ export default async function add(el, params) {
   }
 
   $('q').addEventListener('input', (e) => { query = e.target.value; if (online.query !== query.trim()) online = { query: '', loading: false, results: null, error: '' }; render(); });
+  // Barcode: the phone's own camera takes a photo (no permission prompt), then we read the code from it.
+  $('scan').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) scanFromPhoto(file, handleBarcode);
+  });
   $('form').addEventListener('submit', (e) => { e.preventDefault(); $('q').blur(); runSearch(); });
 
   el.onclick = async (e) => {
@@ -150,7 +157,6 @@ export default async function add(el, params) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'cancel') back();
-    if (act === 'scan') openScanner(handleBarcode);
     if (act === 'searchOnline') runSearch();
     if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; render(); }
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));

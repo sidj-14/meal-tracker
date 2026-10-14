@@ -1,7 +1,11 @@
-// scanner.js — full-screen camera view that reads a barcode.
+// scanner.js — reads a barcode from a photo.
 //
-// Safari has no reliable built-in barcode reader, so we load ZXing (vendor/zxing-browser.min.js)
-// the first time you scan. It looks at the live camera picture and reports the number it sees.
+// Why a photo instead of a live camera view? iPhone Home Screen web apps ask for camera
+// permission every time a page opens the camera itself. Taking a photo through the phone's
+// own camera (a file input with capture="environment") needs no permission at all.
+//
+// ZXing (vendor/zxing-browser.min.js) finds the barcode in the photo. It's loaded the first
+// time you scan.
 
 import { esc, ICON } from './util.js';
 import { closeSheet } from './ui.js';
@@ -14,75 +18,101 @@ function loadLibrary() {
       const s = document.createElement('script');
       s.src = 'vendor/zxing-browser.min.js';
       s.onload = () => resolve(window.ZXingBrowser);
-      s.onerror = () => { libPromise = null; reject(new Error('Could not load the scanner')); };
+      s.onerror = () => { libPromise = null; reject(new Error('Could not load the barcode reader')); };
       document.head.appendChild(s);
     });
   }
   return libPromise;
 }
 
-// onCode(code, setStatus) is called once with the barcode digits.
-export function openScanner(onCode) {
-  const root = document.getElementById('sheet-root');
-  root.innerHTML = `<div class="scanner">
-    <video playsinline muted autoplay></video>
-    <div class="scan-frame" aria-hidden="true"></div>
-    <div class="scan-top"><button class="close" data-act="close" aria-label="Close scanner">${ICON.close}</button></div>
-    <div class="scan-bottom">
-      <span class="scan-status" data-o="status">Starting camera…</span>
-      <form class="row gap8" data-o="manual">
-        <input class="field" inputmode="numeric" pattern="[0-9]*" placeholder="Or type the barcode number" aria-label="Barcode number" maxlength="14">
-        <button class="btn dark sm" type="submit">Look up</button>
-      </form>
-    </div>
-  </div>`;
-  root.classList.add('open');
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't open that photo")); };
+    img.src = url; // <img> applies the photo's rotation for us
+  });
+}
 
-  const video = root.querySelector('video');
+// Draw (part of) the photo onto a canvas at a size ZXing handles quickly.
+function toCanvas(img, crop = 1, maxSide = 1600) {
+  const sw = img.naturalWidth * crop, sh = img.naturalHeight * crop;
+  const sx = (img.naturalWidth - sw) / 2, sy = (img.naturalHeight - sh) / 2;
+  const k = Math.min(1, maxSide / Math.max(sw, sh));
+  const c = document.createElement('canvas');
+  c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+  c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  return c;
+}
+
+// Returns the barcode digits, or null if none was found.
+export async function decodePhoto(file) {
+  const ZX = await loadLibrary();
+  const F = ZX.BarcodeFormat;
+  // Hint 2 = which formats (food barcodes only), hint 3 = "try harder" (also tries the photo turned 90°)
+  const reader = new ZX.BrowserMultiFormatReader(new Map([[2, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E]], [3, true]]));
+  const { img, url } = await loadImage(file);
+  try {
+    // Whole photo first, then zoom into the middle (where people usually aim).
+    for (const [crop, size] of [[1, 1600], [0.6, 1600], [0.4, 1200], [1, 2400]]) {
+      try { return reader.decodeFromCanvas(toCanvas(img, crop, size)).getText(); } catch { /* not found at this zoom */ }
+    }
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// The sheet shown after you take the photo: progress, then retry / type-the-number if needed.
+// onCode(code, setStatus) runs once a barcode is found or typed.
+export async function scanFromPhoto(file, onCode) {
+  const root = document.getElementById('sheet-root');
+  root.innerHTML = `<div class="scrim"></div><div class="sheet" role="dialog" aria-label="Barcode"><div class="sheet-pad">
+    <div class="handle"></div>
+    <div class="row between"><span class="h2">Barcode</span><button class="close" data-act="close" aria-label="Close">${ICON.close}</button></div>
+    <span data-o="status" class="muted">Reading barcode…</span>
+    <div data-o="retry" hidden class="stack gap10">
+      <label class="btn primary" style="cursor:pointer">${ICON.barcode} Take another photo
+        <input type="file" accept="image/*" capture="environment" hidden data-o="again"></label>
+      <span class="note">Tip: fill most of the photo with the barcode, hold the phone flat and avoid glare.</span>
+    </div>
+    <form class="row gap8" data-o="manual">
+      <input class="field" inputmode="numeric" pattern="[0-9]*" placeholder="Or type the barcode number" aria-label="Barcode number" maxlength="14">
+      <button class="btn dark sm" type="submit">Look up</button>
+    </form>
+  </div></div>`;
+  root.classList.add('open');
+  root.querySelector('.scrim').onclick = closeSheet;
+  root.querySelector('[data-act="close"]').onclick = closeSheet;
+
   const status = root.querySelector('[data-o="status"]');
   const setStatus = (msg) => { status.innerHTML = esc(msg); };
-  let controls = null;
-  let done = false;
+  const found = (code) => { root.querySelector('[data-o="retry"]').hidden = true; setStatus(`Found ${code} — looking it up…`); onCode(code, setStatus); };
 
-  const stop = () => { try { controls?.stop(); } catch { /* already stopped */ } controls = null; };
-  const finish = (code) => {
-    if (done) return;
-    done = true;
-    stop();
-    if (navigator.vibrate) navigator.vibrate(40);
-    setStatus(`Found ${code} — looking it up…`);
-    onCode(code, setStatus);
-  };
-
-  root.querySelector('[data-act="close"]').onclick = () => { done = true; stop(); closeSheet(); };
   root.querySelector('[data-o="manual"]').onsubmit = (e) => {
     e.preventDefault();
     const code = e.target.querySelector('input').value.replace(/\D/g, '');
-    if (code.length >= 6) finish(code); else setStatus('Barcodes are usually 8–13 digits.');
+    if (code.length >= 6) found(code); else setStatus('Barcodes are usually 8–13 digits.');
+  };
+  root.querySelector('[data-o="again"]').onchange = (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (f) tryDecode(f);
   };
 
-  (async () => {
+  async function tryDecode(f) {
+    root.querySelector('[data-o="retry"]').hidden = true;
+    setStatus('Reading barcode…');
     try {
-      const ZX = await loadLibrary();
-      const reader = new ZX.BrowserMultiFormatReader();
-      const F = ZX.BarcodeFormat;
-      reader.possibleFormats = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E]; // food barcodes only = faster, fewer misreads
-      if (done) return;
-      controls = await reader.decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' } } },
-        video,
-        (result) => { if (result) finish(result.getText()); },
-      );
-      if (done) stop(); else setStatus('Point the camera at the barcode');
+      const code = await decodePhoto(f);
+      if (code) { found(code); return; }
+      setStatus("Couldn't find a barcode in that photo.");
     } catch (err) {
-      const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
-      setStatus(denied
-        ? 'Camera access is off. Allow it in iPhone Settings → Safari → Camera, or type the number below.'
-        : 'Camera not available. Type the barcode number below.');
+      setStatus(err.message || "Couldn't read that photo.");
     }
-  })();
+    root.querySelector('[data-o="retry"]').hidden = false;
+  }
 
-  // Closing the sheet any other way (e.g. navigating) also turns the camera off.
-  const observer = new MutationObserver(() => { if (!root.contains(video)) { done = true; stop(); observer.disconnect(); } });
-  observer.observe(root, { childList: true });
+  tryDecode(file);
 }
