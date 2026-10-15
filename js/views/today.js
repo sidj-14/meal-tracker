@@ -1,13 +1,16 @@
-// Today — calories left, macros left, and today's entries.
+// Today — calories left, macros left, and the day's entries.
+// '#/today?d=YYYY-MM-DD' shows an earlier day: same screen, fully editable, + adds to that day.
 
 import { getTargets, targetOn, entriesOn, updateEntry, deleteEntry } from '../store.js';
-import { esc, fmt, r1, sum, dateStr, longDate, amountText, ICON } from '../util.js';
-import { tabbar, openSheet, closeSheet, amountSheet, toast } from '../ui.js';
+import { esc, fmt, r1, sum, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
+import { tabbar, openSheet, closeSheet, amountSheet, toast, replace } from '../ui.js';
 
 const RING = 2 * Math.PI * 56; // circumference of the calorie ring
 
-export default async function today(el) {
-  const date = dateStr();
+export default async function today(el, params = new URLSearchParams()) {
+  const date = pickDay(params.get('d'));
+  const isToday = date === dateStr();
+  const goDay = (d) => replace(`#/today${dayQuery(d)}`); // replace: arrows don't pile up "Back" history
   const [targetList, entries] = await Promise.all([getTargets(), entriesOn(date)]);
   const t = targetOn(targetList, date) || { kcal: 2000, p: 0, c: 0, f: 0 };
   entries.sort((a, b) => a.createdAt - b.createdAt);
@@ -39,7 +42,17 @@ export default async function today(el) {
 
   el.innerHTML = `<div class="screen">
     <header class="head row between" style="align-items:flex-end">
-      <div class="stack gap6"><span class="eyebrow">${longDate(date)}</span><h1 class="h1">Today</h1></div>
+      <div class="stack gap6" style="min-width:0">
+        <span class="eyebrow row gap8"><span style="white-space:nowrap">${longDate(date)}</span>${isToday ? '' : '<button class="chip" data-act="today" style="padding:3px 10px;font-size:12px;text-transform:none;letter-spacing:0">Back to today</button>'}</span>
+        <div class="row day-nav">
+          <button class="day-arrow" data-act="prev" aria-label="Previous day">‹</button>
+          <label class="day-title" aria-label="Pick a date">
+            <span class="h1">${dayName(date)}</span>
+            <input type="date" data-o="pick" value="${date}" max="${dateStr()}" aria-label="Pick a date">
+          </label>
+          <button class="day-arrow" data-act="next" aria-label="Next day" ${isToday ? 'disabled' : ''}>›</button>
+        </div>
+      </div>
       <div class="seg"><span class="on">Day</span><a href="#/week">Week</a></div>
     </header>
     <div class="fixed-body">
@@ -72,15 +85,20 @@ export default async function today(el) {
             const k = sum(card.items).kcal;
             const sub = card.single ? `${amountText(card.items[0].grams, card.items[0])} · P ${r1(card.items[0].p)} · C ${r1(card.items[0].c)} · F ${r1(card.items[0].f)}` : card.items.map((i) => i.name).join(', ');
             return `<button class="list-item" data-act="all"><span class="grow"><span class="name">${esc(card.name)}</span><span class="sub">${esc(sub)}</span></span><span class="kcal">${fmt(k)}</span></button>`;
-          }).join('') : `<div class="empty">Nothing logged yet today.<br>Tap + below to add food.</div>`}
+          }).join('') : `<div class="empty">${isToday ? 'Nothing logged yet today.' : 'Nothing logged on this day.'}<br>Tap + below to add food.</div>`}
         </div>
       </div>
     </div>
-    ${tabbar('today')}
+    ${tabbar('today', date)}
   </div>`;
+
+  el.querySelector('[data-o="pick"]').addEventListener('change', (e) => { if (e.target.value) goDay(pickDay(e.target.value)); });
 
   el.onclick = (e) => {
     const b = e.target.closest('[data-act]');
+    if (b && b.dataset.act === 'prev') return goDay(addDays(date, -1));
+    if (b && b.dataset.act === 'next') return goDay(addDays(date, 1));
+    if (b && b.dataset.act === 'today') return goDay(dateStr());
     if (b && b.dataset.act === 'all') openAll();
   };
 
@@ -96,7 +114,7 @@ export default async function today(el) {
       <div style="padding:10px 24px 8px" class="stack gap10">
         <div class="handle"></div>
         <div class="row between">
-          <div class="stack"><span class="h2">Today's entries</span>
+          <div class="stack"><span class="h2">${isToday ? "Today's entries" : `${dayName(date)}: entries`}</span>
             <span class="note" style="font-size:13px">${entries.length} item${entries.length === 1 ? '' : 's'} · ${fmt(eaten.kcal)} kcal · P ${fmt(eaten.p)} · C ${fmt(eaten.c)} · F ${fmt(eaten.f)}</span></div>
           <button class="close" data-act="close" aria-label="Close">${ICON.close}</button>
         </div>
@@ -110,7 +128,7 @@ export default async function today(el) {
         </div>`).join('')}
         <span class="note center-text">Tap an item to change the amount or group, or to delete it.</span>
       </div>
-      <div class="sheet-foot"><a class="btn primary" href="#/add">${ICON.plusSm} Add food</a></div>`, { tall: true });
+      <div class="sheet-foot"><a class="btn primary" href="#/add${dayQuery(date)}">${ICON.plusSm} Add food</a></div>`, { tall: true });
 
     sheet.onclick = (e) => {
       const b = e.target.closest('[data-act]');
@@ -120,8 +138,8 @@ export default async function today(el) {
         const entry = entries.find((x) => x.id === b.dataset.id);
         amountSheet({
           food: { name: entry.name, per100: entry.per100, servingG: entry.servingG, baseUnit: entry.baseUnit, servingQty: entry.servingQty, servingUnit: entry.servingUnit }, grams: entry.grams, group: entry.group, mode: 'edit',
-          onSubmit: async (grams, group) => { await updateEntry(entry, grams, group); closeSheet(); toast('Saved'); today(el); },
-          onDelete: async () => { await deleteEntry(entry.id); closeSheet(); toast('Deleted'); today(el); },
+          onSubmit: async (grams, group) => { await updateEntry(entry, grams, group); closeSheet(); toast('Saved'); today(el, params); },
+          onDelete: async () => { await deleteEntry(entry.id); closeSheet(); toast('Deleted'); today(el, params); },
         });
       }
     };

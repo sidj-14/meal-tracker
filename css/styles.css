@@ -170,3 +170,10 @@ h1, h2, h3 { margin: 0; }
 /* ---------- Welcome ---------- */
 .welcome { height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: calc(var(--top) + 80px) 28px calc(28px + var(--bottom)); }
 
+
+/* ---------- Day switcher (Today) ---------- */
+.day-nav { gap: 2px; margin-left: -10px; }
+.day-arrow { border: 0; background: transparent; width: 34px; height: 44px; font-size: 28px; line-height: 1; color: var(--ink); }
+.day-arrow:disabled { color: var(--line); }
+.day-title { position: relative; white-space: nowrap; }
+.day-title input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; }  /* invisible; tapping the title opens the date picker */

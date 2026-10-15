@@ -10,6 +10,20 @@ export function parseDate(s) { const [y, m, d] = s.split('-').map(Number); retur
 export function addDays(s, n) { const d = parseDate(s); d.setDate(d.getDate() + n); return dateStr(d); }
 export const shortDate = (s) => parseDate(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 export const longDate = (s) => parseDate(s).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+// "Today", "Yesterday", or "Mon, Oct 12"
+export function dayName(s) {
+  const t = dateStr();
+  if (s === t) return 'Today';
+  if (s === addDays(t, -1)) return 'Yesterday';
+  return parseDate(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+// The day to show: a valid 'YYYY-MM-DD' that isn't in the future, otherwise today.
+export function pickDay(d) {
+  const t = dateStr();
+  return /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d <= t ? d : t;
+}
+// '?d=2026-10-12' for links, or '' when the day is today (keeps today's links clean)
+export const dayQuery = (d) => (d && d !== dateStr() ? `?d=${d}` : '');
 
 // ----- Numbers -----
 export const fmt = (n) => Math.round(n).toLocaleString('en-US');

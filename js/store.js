@@ -56,9 +56,9 @@ export const deleteFood = (id) => db.del('foods', id);
 export const entriesOn = (date) => db.byIndex('entries', 'date', IDBKeyRange.only(date));
 export const entriesBetween = (from, to) => db.byIndex('entries', 'date', IDBKeyRange.bound(from, to));
 
-export async function addEntry(food, grams, group) {
+export async function addEntry(food, grams, group, date = dateStr()) {
   const entry = {
-    id: uid(), date: dateStr(), createdAt: Date.now(),
+    id: uid(), date, createdAt: Date.now(),
     foodId: food.id, name: food.name, per100: { ...food.per100 },
     grams, servingG: food.servingG || null, baseUnit: food.baseUnit || 'g',
     servingQty: food.servingQty || null, servingUnit: food.servingUnit || null, group: group || null, ...scale(food.per100, grams),

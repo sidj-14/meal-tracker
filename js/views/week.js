@@ -1,7 +1,7 @@
 // Week to date — weekly calorie budget, per-day bars against each day's target, and macro averages.
 
 import { getTargets, targetOn, entriesBetween, getWeekStart } from '../store.js';
-import { fmt, sum, dateStr, addDays, parseDate, shortDate } from '../util.js';
+import { fmt, sum, dateStr, addDays, parseDate, shortDate, dayQuery } from '../util.js';
 import { tabbar } from '../ui.js';
 
 export default async function week(el) {
@@ -37,9 +37,11 @@ export default async function week(el) {
     const h = empty ? 8 : Math.max(6, (x.eaten.kcal / max) * H);
     const color = empty ? 'var(--line)' : 'var(--accent)';
     const opacity = x.date === today ? 0.6 : 1;
-    return `<div class="bar-col" title="${shortDate(x.date)}: ${fmt(x.eaten.kcal)} kcal">
+    // Past days and today open that day on the Today screen
+    const tag = x.date > today ? 'div' : 'a';
+    return `<${tag} class="bar-col" ${tag === 'a' ? `href="#/today${dayQuery(x.date)}"` : ''} aria-label="${shortDate(x.date)}: ${fmt(x.eaten.kcal)} kcal">
       ${x.tracked ? `<div class="target-tick" style="bottom:${(x.target.kcal / max) * H}px"></div>` : ''}
-      <div class="bar" style="height:${h}px;background:${color};opacity:${opacity}"></div></div>`;
+      <div class="bar" style="height:${h}px;background:${color};opacity:${opacity}"></div></${tag}>`;
   }).join('');
   const labels = days.map((d) => {
     const letter = parseDate(d).toLocaleDateString('en-US', { weekday: 'narrow' });
@@ -75,7 +77,7 @@ export default async function week(el) {
         <span class="title">Daily calories</span>
         <div class="bars">${bars}</div>
         <div class="days">${labels}</div>
-        <span class="note">Dashes = each day's target · today still in progress</span>
+        <span class="note">Dashes = each day's target · tap a day to see or edit it</span>
       </div>
       <div class="card">
         <div class="row between"><span class="title">Macros, week to date</span><span class="note">avg / day vs target</span></div>

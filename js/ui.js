@@ -1,7 +1,7 @@
 // ui.js — shared pieces of interface: navigation, tab bar, bottom sheets, toast,
 // and the "amount" sheet used both for adding and for editing an entry.
 
-import { esc, fmt, r1, num, scale, servingLabel, amountUnits, ICON } from './util.js';
+import { esc, fmt, r1, num, scale, servingLabel, amountUnits, dayQuery, ICON } from './util.js';
 import { BUILTIN_GROUPS, getGroups, setGroups } from './store.js';
 
 // ---------- navigation ----------
@@ -17,11 +17,11 @@ export function back(fallback = '#/today') {
 }
 
 // ---------- tab bar ----------
-export function tabbar(active) {
+export function tabbar(active, day) {
   const tab = (key, label) => `<a href="#/${key}" class="tab ${active === key ? 'on' : ''}" ${active === key ? 'aria-current="page"' : ''}>${label}</a>`;
   return `<nav class="tabbar">
     ${tab('today', 'Today')}${tab('week', 'Week')}
-    <a href="#/add" class="tab-add" aria-label="Add food">${ICON.plus}</a>
+    <a href="#/add${dayQuery(day)}" class="tab-add" aria-label="Add food">${ICON.plus}</a>
     ${tab('trends', 'Trends')}${tab('settings', 'Settings')}
   </nav>`;
 }
@@ -54,7 +54,7 @@ export function toast(msg) {
 // Shows a food, lets you set grams and an optional group, previews macros live.
 // mode 'add'  -> onSubmit(grams, group) adds a new entry
 // mode 'edit' -> onSubmit saves changes, onDelete removes the entry
-export async function amountSheet({ food, grams, group = null, mode = 'add', remaining, note = '', onSubmit, onDelete }) {
+export async function amountSheet({ food, grams, group = null, mode = 'add', remaining, note = '', dayLabel = 'today', onSubmit, onDelete }) {
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
   // You can enter the amount in pieces, servings or g/ml (whichever apply to this food).
@@ -120,9 +120,9 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
       const pLeft = remaining.p - m.p;
       $('after').textContent = 'After this: '
         + (kLeft >= 0 ? `${fmt(kLeft)} kcal left` : `${fmt(-kLeft)} kcal over`) + ' · '
-        + (pLeft > 0 ? `${fmt(pLeft)} g protein left` : 'protein goal met') + ' today';
+        + (pLeft > 0 ? `${fmt(pLeft)} g protein left` : 'protein goal met') + (dayLabel === 'today' || dayLabel === 'yesterday' ? ` ${dayLabel}` : ` on ${dayLabel}`);
     }
-    $('submit').textContent = mode === 'edit' ? 'Save' : (state.group ? `Add to ${state.group}` : 'Add to today');
+    $('submit').textContent = mode === 'edit' ? 'Save' : (state.group ? `Add to ${state.group}` : `Add to ${dayLabel}`);
   }
 
   function renderGroups() {

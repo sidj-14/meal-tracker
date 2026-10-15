@@ -2,13 +2,16 @@
 // the amount sheet, which adds the entry to today (and saves the food to My foods for next time).
 
 import { allFoods, getFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry } from '../store.js';
-import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, amountText, ICON } from '../util.js';
+import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
 import { scanFromPhoto } from '../scanner.js';
 
 export default async function add(el, params) {
   const today = dateStr();
+  const day = pickDay(params.get('d'));            // the day you're adding to (today unless you came from an earlier day)
+  const dayLabel = day === today ? 'today' : day === addDays(today, -1) ? 'yesterday' : dayName(day);
+  const backToDay = () => replace(`#/today${dayQuery(day)}`);
   let [foods, history] = await Promise.all([allFoods(), entriesBetween(addDays(today, -21), today)]);
   history.sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1));
   let tab = params.get('tab') || (history.length ? 'recent' : 'mine');
@@ -18,7 +21,7 @@ export default async function add(el, params) {
   el.innerHTML = `<div class="screen">
     <header class="head row between">
       <button class="link" data-act="cancel">Cancel</button>
-      <h1 class="h2">Add food</h1>
+      <div class="stack" style="align-items:center"><h1 class="h2">Add food</h1>${day === today ? '' : `<span class="note">to ${esc(dayName(day))}</span>`}</div>
       <span style="width:52px"></span>
     </header>
     <div class="stack gap14" style="padding:14px 24px 0">
@@ -67,7 +70,7 @@ export default async function add(el, params) {
   }
 
   // ----- Recent: what you logged on previous days, by day and group, ready to add again -----
-  function dayLabel(d) {
+  function recentDayName(d) {
     if (d === today) return 'Today';
     if (d === addDays(today, -1)) return 'Yesterday';
     return longDate(d);
@@ -85,14 +88,14 @@ export default async function add(el, params) {
       <span class="kcal">${fmt(e.kcal)}</span></button>`;
     return days.slice(0, 14).map((day) => `
       <div class="stack gap8" style="flex-shrink:0">
-        <span class="small muted" style="padding:6px 4px 0;text-transform:uppercase;letter-spacing:.04em">${dayLabel(day.date)}</span>
+        <span class="small muted" style="padding:6px 4px 0;text-transform:uppercase;letter-spacing:.04em">${recentDayName(day.date)}</span>
         ${[...day.groups].map(([g, items]) => `
           <div class="row between" style="padding:2px 4px 0"><span class="title" style="font-size:14px">${esc(g)} <span class="muted" style="font-weight:400">· ${fmt(sum(items).kcal)} kcal</span></span>
             <button class="chip" data-act="againAll" data-date="${day.date}" data-g="${esc(g)}">Add all</button></div>
           ${items.map(item).join('')}`).join('')}
         ${day.loose.map(item).join('')}
       </div>`).join('')
-      + '<span class="note center-text" style="padding:8px">Tap an item to add it to today. You can change the amount and group before adding.</span>';
+      + `<span class="note center-text" style="padding:8px">Tap an item to add it to ${esc(dayLabel)}. You can change the amount and group before adding.</span>`;
   }
 
   // A logged entry carries a copy of its food, so it can be re-added even if the food was deleted.
@@ -125,18 +128,17 @@ export default async function add(el, params) {
   async function pick(food, note, preset = {}) {
     const saved = await getFood(food.id); // an online food you've used before keeps your last amount
     const f = saved || food;
-    const date = dateStr();
-    const [targetList, entries] = await Promise.all([getTargets(), entriesOn(date)]);
-    const t = targetOn(targetList, date) || { kcal: 0, p: 0 };
+    const [targetList, entries] = await Promise.all([getTargets(), entriesOn(day)]);
+    const t = targetOn(targetList, day) || { kcal: 0, p: 0 };
     const eaten = sum(entries);
     amountSheet({
       food: f, grams: preset.grams || f.lastGrams || f.servingG || null, group: preset.group || null,
-      mode: 'add', note: saved ? '' : note,
+      mode: 'add', note: saved ? '' : note, dayLabel,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
       onSubmit: async (grams, group) => {
-        await addEntry(f, grams, group); // also saves the food to My foods
+        await addEntry(f, grams, group, day); // also saves the food to My foods
         toast(`Added ${f.name}`);
-        replace('#/today');
+        backToDay();
       },
     });
   }
@@ -202,9 +204,9 @@ export default async function add(el, params) {
     }
     if (act === 'againAll') {
       const items = history.filter((x) => x.date === b.dataset.date && x.group === b.dataset.g).reverse(); // original order
-      for (const e of items) await addEntry(await foodOf(e), e.grams, e.group);
+      for (const e of items) await addEntry(await foodOf(e), e.grams, e.group, day);
       toast(`Added ${b.dataset.g} (${items.length} item${items.length === 1 ? '' : 's'})`);
-      replace('#/today');
+      backToDay();
     }
     if (act === 'pickOnline') pick(online.results.find((f) => f.id === b.dataset.id), 'From USDA FoodData Central');
   };
