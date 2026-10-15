@@ -39,7 +39,7 @@ export async function saveTarget({ kcal, p, c, f }) {
 }
 
 // ---------- foods ----------
-// { id, name, brand, per100: { kcal, p, c, f }, servingG, barcode, fav, lastUsed, lastGrams }
+// { id, name, brand, per100: { kcal, p, c, f }, servingG, barcode, lastUsed, lastGrams }
 export const allFoods = () => db.all('foods');
 export const getFood = (id) => db.get('foods', id);
 export async function saveFood(food) {

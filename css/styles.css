@@ -130,10 +130,7 @@ h1, h2, h3 { margin: 0; }
 .list-item .kcal { font-weight: 600; font-size: 15px; flex-shrink: 0; }
 .food-row { display: flex; align-items: stretch; background: #fff; border-radius: 16px; flex-shrink: 0; }
 .food-row .list-item { background: transparent; border-radius: 16px; width: auto; flex: 1 1 auto; min-width: 0; }
-.star { border: 0; background: transparent; width: 44px; color: #A9A59C; font-size: 20px; flex-shrink: 0; }
-.fav-btn { align-self: flex-start; margin-top: -6px; border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 500; color: var(--muted); }
-.fav-btn.on { border-color: #E9D9A0; background: #FBF5E1; color: #8A6D12; }
-.star.on { color: #C9A227; }
+.edit-link { display: flex; align-items: center; justify-content: center; width: 52px; flex-shrink: 0; text-decoration: none; font-size: 13px; color: var(--muted); }
 .entries { flex: 1 1 0; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .empty { text-align: center; color: var(--muted); font-size: 14px; padding: 28px 12px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
 .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border: 0; background: transparent; width: 100%; text-align: left; font-size: 14px; text-decoration: none; color: var(--ink); }

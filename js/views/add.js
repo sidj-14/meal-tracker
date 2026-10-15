@@ -1,8 +1,7 @@
-// Add food — re-add something you logged before (Recent, by day), pick from Favorites or
-// My foods, search the USDA database, scan a barcode, or create a food. Choosing a food opens
+// Add food — re-add something you logged before (Recent, by day), pick from My foods, search the USDA database, scan a barcode, or create a food. Choosing a food opens
 // the amount sheet, which adds the entry to today (and saves the food to My foods for next time).
 
-import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry } from '../store.js';
+import { allFoods, getFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry } from '../store.js';
 import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
@@ -38,7 +37,6 @@ export default async function add(el, params) {
   function visibleFoods() {
     const q = query.trim().toLowerCase();
     if (q) return foods.filter((f) => `${f.name} ${f.brand || ''}`.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-    if (tab === 'fav') return foods.filter((f) => f.fav).sort((a, b) => a.name.localeCompare(b.name));
     return foods.slice().sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -51,8 +49,7 @@ export default async function add(el, params) {
         <span class="sub">${amountText(g, f)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
         <span class="kcal">${fmt(m.kcal)}</span>
       </button>
-      ${saved ? `<button class="star ${f.fav ? 'on' : ''}" data-act="fav" data-id="${esc(f.id)}" aria-label="${f.fav ? 'Remove from' : 'Add to'} favorites" aria-pressed="${!!f.fav}">${f.fav ? '★' : '☆'}</button>` : ''}
-      ${saved && tab === 'mine' && !query ? `<a class="star" style="display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:13px;color:var(--muted);width:48px" href="#/create?edit=${esc(f.id)}" aria-label="Edit ${esc(f.name)}">Edit</a>` : ''}
+      ${saved && tab === 'mine' && !query ? `<a class="edit-link" href="#/create?edit=${esc(f.id)}" aria-label="Edit ${esc(f.name)}">Edit</a>` : ''}
     </div>`;
   };
 
@@ -106,7 +103,7 @@ export default async function add(el, params) {
 
   function render() {
     const tabBtn = (key, label) => `<button class="chip ${tab === key && !query ? 'on' : ''}" data-act="tab" data-tab="${key}">${label}</button>`;
-    $('tabs').innerHTML = tabBtn('recent', 'Recent') + tabBtn('fav', 'Favorites') + tabBtn('mine', 'My foods')
+    $('tabs').innerHTML = tabBtn('recent', 'Recent') + tabBtn('mine', 'My foods')
       + '<a class="chip dashed link-chip" href="#/create">Create</a>';
 
     const list = visibleFoods();
@@ -118,7 +115,7 @@ export default async function add(el, params) {
     } else if (!foods.length) {
       html = `<div class="empty">No foods saved yet.<br>Search above, scan a barcode, or create one from its label.<a class="btn primary sm" href="#/create">Create a food</a></div>`;
     } else if (!list.length) {
-      html = `<div class="empty">${tab === 'fav' ? 'No favorites yet. Open any food and tap “☆ Add to favorites”, or tap the ☆ next to a food in My foods.' : 'Foods you log will show up here.'}</div>`;
+      html = `<div class="empty">Foods you log will show up here.</div>`;
     } else {
       html = list.map((f) => row(f)).join('');
     }
@@ -126,7 +123,7 @@ export default async function add(el, params) {
   }
 
   async function pick(food, note, preset = {}) {
-    const saved = await getFood(food.id); // an online food you've used before keeps your favorite/last amount
+    const saved = await getFood(food.id); // an online food you've used before keeps your last amount
     const f = saved || food;
     const date = dateStr();
     const [targetList, entries] = await Promise.all([getTargets(), entriesOn(date)]);
@@ -197,7 +194,7 @@ export default async function add(el, params) {
     const act = b.dataset.act;
     if (act === 'cancel') back();
     if (act === 'searchOnline') runSearch();
-    if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; foods = await allFoods(); render(); } // re-read: favorites may have changed
+    if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; render(); }
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));
     if (act === 'again') {
       const e = history.find((x) => x.id === b.dataset.id);
@@ -210,12 +207,6 @@ export default async function add(el, params) {
       replace('#/today');
     }
     if (act === 'pickOnline') pick(online.results.find((f) => f.id === b.dataset.id), 'From USDA FoodData Central');
-    if (act === 'fav') {
-      const f = foods.find((x) => x.id === b.dataset.id);
-      f.fav = !f.fav;
-      await saveFood(f);
-      render();
-    }
   };
 
   render();
