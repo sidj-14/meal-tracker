@@ -32,7 +32,54 @@ export function openSheet(html, { tall = false } = {}) {
   root.innerHTML = `<div class="scrim"></div><div class="sheet ${tall ? 'tall' : ''}" role="dialog" aria-modal="true">${html}</div>`;
   root.classList.add('open');
   root.querySelector('.scrim').onclick = closeSheet;
-  return root.querySelector('.sheet');
+  const sheet = root.querySelector('.sheet');
+  enableSwipeDown(sheet, root.querySelector('.scrim'));
+  return sheet;
+}
+
+// Swipe down to close, like iPhone sheets. A drag starts from the handle/header,
+// or from the list when it's already scrolled to the top (so scrolling still works).
+function enableSwipeDown(sheet, scrim) {
+  let startY = 0, startT = 0, dy = 0, dragging = false, scroller = null, active = false;
+
+  sheet.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || e.target.closest('input, select, textarea')) { active = false; return; }
+    active = true; dragging = false; dy = 0;
+    startY = e.touches[0].clientY; startT = Date.now();
+    scroller = e.target.closest('.sheet-scroll, .sheet-pad');
+  }, { passive: true });
+
+  sheet.addEventListener('touchmove', (e) => {
+    if (!active) return;
+    dy = e.touches[0].clientY - startY;
+    if (!dragging) {
+      const atTop = !scroller || scroller.scrollTop <= 0;
+      if (dy > 6 && atTop) dragging = true;          // pulling down at the top → drag the sheet
+      else if (Math.abs(dy) > 6) { active = false; return; } // otherwise it's a normal scroll
+      else return;
+    }
+    e.preventDefault(); // stop the list from scrolling while the sheet moves
+    const move = Math.max(0, dy);
+    sheet.style.transition = 'none';
+    sheet.style.transform = `translateY(${move}px)`;
+    scrim.style.opacity = String(Math.max(0, 1 - move / sheet.offsetHeight));
+  }, { passive: false });
+
+  sheet.addEventListener('touchend', () => {
+    if (!active || !dragging) { active = false; return; }
+    active = false;
+    const fast = dy / Math.max(1, Date.now() - startT) > 0.35; // a quick flick also closes
+    sheet.style.transition = 'transform .2s ease-out';
+    scrim.style.transition = 'opacity .2s ease-out';
+    if (dy > sheet.offsetHeight * 0.25 || (fast && dy > 30)) {
+      sheet.style.transform = 'translateY(100%)';
+      scrim.style.opacity = '0';
+      setTimeout(() => { if (sheet.isConnected) closeSheet(); }, 200);
+    } else {
+      sheet.style.transform = '';
+      scrim.style.opacity = '';
+    }
+  });
 }
 export function closeSheet() {
   const root = document.getElementById('sheet-root');
