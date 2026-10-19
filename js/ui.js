@@ -2,7 +2,7 @@
 // and the "amount" sheet used both for adding and for editing an entry.
 
 import { esc, fmt, r1, num, scale, servingLabel, amountUnits, dayQuery, ICON } from './util.js';
-import { BUILTIN_GROUPS, getGroups, setGroups } from './store.js';
+import { BUILTIN_GROUPS, getGroups, setGroups, getFood, saveFood } from './store.js';
 
 // ---------- navigation ----------
 // Screens are addressed by the part of the URL after '#', e.g. '#/today'.
@@ -99,19 +99,26 @@ export function toast(msg) {
 
 // ---------- amount sheet ----------
 // Shows a food, lets you set grams and an optional group, previews macros live.
-// mode 'add'  -> onSubmit(grams, group) adds a new entry
+// mode 'add'  -> onSubmit(grams, group, unit) adds a new entry
 // mode 'edit' -> onSubmit saves changes, onDelete removes the entry
-export async function amountSheet({ food, grams, group = null, mode = 'add', remaining, note = '', dayLabel = 'today', onSubmit, onDelete }) {
+export async function amountSheet(opts) {
+  const { food, grams, group = null, mode = 'add', remaining, note = '', dayLabel = 'today', onSubmit, onDelete } = opts;
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
   // You can enter the amount in pieces, servings or g/ml (whichever apply to this food).
   // Internally it's always kept in the food's base unit (g, ml or pieces) as `state.grams`.
   const units = amountUnits(food);
   const unitOf = (key) => units.find((u) => u.key === key) || units[0];
-  const state = { grams: grams || units[0].per * (units[0].key === 'base' ? 100 : 1), group, adding: false, unit: units[0].key };
+  // Start in the unit you asked for, else the one you used last time for this food, else the first one
+  const startUnit = [opts.unit, food.lastUnit].find((k) => units.some((u) => u.key === k)) || units[0].key;
+  const first = unitOf(startUnit);
+  const state = { grams: grams || first.per * (first.key === 'base' ? 100 : 1), group, adding: false, unit: startUnit };
   const r2 = (x) => Math.round(x * 100) / 100;
   const shown = () => (state.unit === 'base' ? r1 : r2)(state.grams / unitOf(state.unit).per);
   const hasServing = !!food.servingG;
+  // "Count in pieces": offered when adding a weighed/poured food that has no pieces yet
+  const canSetPieces = (food.baseUnit || 'g') !== 'pc' && !units.some((u) => u.key === 'pc');
+  const base = food.baseUnit || 'g';
 
   const sheet = openSheet(`<div class="sheet-pad">
     <div class="handle"></div>
@@ -132,7 +139,8 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
           ? `<div class="seg" data-o="units">${units.map((u) => `<button data-act="unit" data-u="${u.key}">${u.label}</button>`).join('')}</div>`
           : `<span class="muted">${units[0].label}</span>`}
       </div>
-      ${hasServing ? '<span class="note" data-o="equiv"></span>' : ''}
+      ${units.length > 1 ? '<span class="note" data-o="equiv"></span>' : ''}
+      ${canSetPieces ? `<div data-o="pieces"><button class="link" data-act="pieces" style="font-size:13px;padding:2px 0">Count in pieces ›</button></div>` : ''}
     </div>
     <div class="tiles">
       <div class="t-p">Protein<b data-o="p"></b></div>
@@ -154,9 +162,9 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
   function update() {
     const m = scale(food.per100, state.grams);
     sheet.querySelectorAll('[data-act="unit"]').forEach((b) => b.classList.toggle('on', b.dataset.u === state.unit));
-    if (hasServing) {
-      const others = units.filter((u) => u.key !== state.unit).map((u) => { const n = r2(state.grams / u.per); return `${n} ${n === 1 ? u.label.replace(/s$/, '') : u.label}`; });
-      $('equiv').textContent = `${others.length ? `= ${others.join(' = ')} · ` : ''}1 serving is ${servingLabel(food)}`;
+    if (units.length > 1) {
+      const others = units.filter((u) => u.key !== state.unit).map((u) => { const n = (u.key === 'base' ? r1 : r2)(state.grams / u.per); return `${n} ${n === 1 ? u.label.replace(/s$/, '') : u.label}`; });
+      $('equiv').textContent = `= ${others.join(' = ')}${!hasServing ? '' : food.servingUnit === 'pieces' && food.servingQty === 1 ? ` · 1 piece is ${r1(food.servingG)} ${base}` : ` · 1 serving is ${servingLabel(food)}`}`;
     }
     $('kcal').textContent = fmt(m.kcal);
     $('p').textContent = `${r1(m.p)} g`;
@@ -218,7 +226,27 @@ export async function amountSheet({ food, grams, group = null, mode = 'add', rem
     } else if (act === 'submit') {
       if (state.grams <= 0) { toast('Enter an amount'); return; }
       b.disabled = true;
-      await onSubmit(state.grams, state.group);
+      await onSubmit(state.grams, state.group, state.unit, food); // food may now include pieces
+    } else if (act === 'pieces') {
+      // Ask once how pieces relate to this food, e.g. "1 serving = 6 pieces" or "1 piece = 12 g"
+      $('pieces').innerHTML = `<div class="row gap8 wrap" style="align-items:center">
+        <span class="note" style="font-size:13px">${hasServing ? `1 serving (${esc(servingLabel(food))}) =` : '1 piece ='}</span>
+        <input class="num-in sm" data-o="pcs" inputmode="decimal" aria-label="${hasServing ? 'Pieces per serving' : `Weight of one piece in ${base}`}" style="width:64px">
+        <span class="note" style="font-size:13px">${hasServing ? 'pieces' : base}</span>
+        <button class="btn dark sm" data-act="savepieces">Save</button></div>`;
+      $('pcs').focus();
+    } else if (act === 'savepieces') {
+      const n = num($('pcs').value);
+      if (!n) { toast(hasServing ? 'How many pieces in one serving?' : 'How much does one piece weigh?'); return; }
+      const updated = hasServing
+        ? { ...food, servingUnit: 'pieces', servingQty: n }
+        : { ...food, servingG: n, servingUnit: 'pieces', servingQty: 1 };
+      // Already in My foods: remember it there now (new foods are saved when you add them)
+      const stored = food.id && await getFood(food.id);
+      if (stored) await saveFood({ ...stored, servingG: updated.servingG, servingUnit: 'pieces', servingQty: updated.servingQty });
+      const perPiece = updated.servingG / updated.servingQty;
+      const count = Math.max(1, Math.round(state.grams / perPiece)); // start on a whole number of pieces
+      amountSheet({ ...opts, food: updated, grams: count * perPiece, group: state.group, unit: 'pc' });
     } else if (act === 'delete') {
       await onDelete();
     }

@@ -47,8 +47,13 @@ export function amountUnits(food) {
   const units = [];
   const pieceSize = food.servingUnit === 'pieces' && food.servingQty ? food.servingG / food.servingQty : null;
   if (base === 'pc' || pieceSize) units.push({ key: 'pc', label: 'pieces', per: base === 'pc' ? 1 : pieceSize, step: 1 });
-  if (food.servingG && !(base === 'pc' && food.servingQty === 1)) units.push({ key: 'serv', label: 'servings', per: food.servingG, step: 0.5 });
+  // A serving that is exactly 1 piece would be the same button twice, so skip "servings" then
+  const onePiece = food.servingUnit === 'pieces' && food.servingQty === 1;
+  if (food.servingG && !onePiece) units.push({ key: 'serv', label: 'servings', per: food.servingG, step: 0.5 });
   if (base !== 'pc') units.push({ key: 'base', label: base, per: 1, step: 10 });
+  // Ounces for weighed foods, fluid ounces for drinks
+  if (base === 'g') units.push({ key: 'oz', label: 'oz', per: TO_BASE.oz, step: 0.5 });
+  if (base === 'ml') units.push({ key: 'floz', label: 'fl oz', per: TO_BASE['fl oz'], step: 1 });
   return units;
 }
 

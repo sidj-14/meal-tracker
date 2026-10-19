@@ -16,12 +16,23 @@ export class LookupError extends Error {}
 
 const n = (v) => { const x = parseFloat(v); return Number.isFinite(x) && x >= 0 ? x : null; };
 
+// How many pieces are in one serving, read from the label's serving text:
+// "1 oz (28g/About 11 chips)" -> 11, "2 cookies (30 g)" -> 2, "1 bar (40g)" -> null (1 piece = 1 serving already).
+const MEASURE = /^(ounces?|ozs?|fl|cups?|tbsps?|tsps?|tablespoons?|teaspoons?|grams?|mls?|liters?|litres?|kcal|cal|calories|mg|servings?|containers?|packages?|packs?|portions?)$/i;
+export function piecesPerServing(text) {
+  for (const m of String(text || '').matchAll(/(\d+(?:\.\d+)?)\s*([a-z]{3,})/gi)) {
+    const count = parseFloat(m[1]);
+    if (!MEASURE.test(m[2]) && count > 1 && count <= 200) return count;
+  }
+  return null;
+}
+
 // ---------- barcode ----------
 // Returns { status: 'found', food } | { status: 'incomplete', name, brand } | { status: 'missing' }
 export async function lookupBarcode(code) {
   let res;
   try {
-    res = await fetch(`${OFF}${encodeURIComponent(code)}?fields=product_name,product_name_en,brands,nutriments,serving_quantity,serving_quantity_unit`);
+    res = await fetch(`${OFF}${encodeURIComponent(code)}?fields=product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,serving_quantity_unit`);
   } catch {
     throw new LookupError("Couldn't reach the food database. Check your internet connection.");
   }
@@ -40,13 +51,16 @@ export async function lookupBarcode(code) {
   if (kcal === null && prot !== null && carb !== null && fat !== null) kcal = kcalFromMacros(prot, carb, fat);
 
   if (!name || kcal === null || prot === null || carb === null || fat === null) return { status: 'incomplete', name, brand };
+  const servingG = n(p.serving_quantity) || null;
+  const pieces = servingG ? piecesPerServing(p.serving_size) : null;
   return {
     status: 'found',
     food: {
       id: `off-${code}`, name, brand, barcode: code, source: 'Open Food Facts',
       per100: { kcal: r1(kcal), p: r1(prot), c: r1(carb), f: r1(fat) },
-      servingG: n(p.serving_quantity) || null,
+      servingG,
       baseUnit: /ml/i.test(p.serving_quantity_unit || '') ? 'ml' : 'g',
+      ...(pieces ? { servingUnit: 'pieces', servingQty: pieces } : {}),
     },
   };
 }

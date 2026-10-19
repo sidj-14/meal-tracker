@@ -135,8 +135,8 @@ export default async function add(el, params) {
       food: f, grams: preset.grams || f.lastGrams || f.servingG || null, group: preset.group || null,
       mode: 'add', note: saved ? '' : note, dayLabel,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
-      onSubmit: async (grams, group) => {
-        await addEntry(f, grams, group, day); // also saves the food to My foods
+      onSubmit: async (grams, group, unit, food) => {
+        await addEntry({ ...food, lastUnit: unit }, grams, group, day); // also saves the food to My foods
         toast(`Added ${f.name}`);
         backToDay();
       },

@@ -61,14 +61,16 @@ export async function addEntry(food, grams, group, date = dateStr()) {
     id: uid(), date, createdAt: Date.now(),
     foodId: food.id, name: food.name, per100: { ...food.per100 },
     grams, servingG: food.servingG || null, baseUnit: food.baseUnit || 'g',
-    servingQty: food.servingQty || null, servingUnit: food.servingUnit || null, group: group || null, ...scale(food.per100, grams),
+    servingQty: food.servingQty || null, servingUnit: food.servingUnit || null, group: group || null, unit: food.lastUnit || null, ...scale(food.per100, grams),
   };
   await db.put('entries', entry);
   await db.put('foods', { ...food, lastUsed: Date.now(), lastGrams: grams });
   return entry;
 }
-export async function updateEntry(entry, grams, group) {
-  await db.put('entries', { ...entry, grams, group: group || null, ...scale(entry.per100, grams) });
+// `food` (optional) carries serving details set while editing, e.g. pieces per serving
+export async function updateEntry(entry, grams, group, unit, food = {}) {
+  const serving = food.servingUnit === 'pieces' ? { servingG: food.servingG, servingUnit: 'pieces', servingQty: food.servingQty } : {};
+  await db.put('entries', { ...entry, ...serving, grams, group: group || null, unit: unit || entry.unit || null, ...scale(entry.per100, grams) });
 }
 export const deleteEntry = (id) => db.del('entries', id);
 
