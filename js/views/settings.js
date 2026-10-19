@@ -51,7 +51,7 @@ export default async function settings(el) {
         <label class="setting-row" style="cursor:pointer"><span>Restore from a backup</span><span class="val">Import ›</span>
           <input type="file" accept="application/json,.json" data-act="import" hidden></label>
       </div>
-      <span class="note center-text">Meal Tracker · version 2.3</span>
+      <span class="note center-text">Meal Tracker · version 2.4</span>
     </div>
     ${tabbar('settings')}
   </div>`;

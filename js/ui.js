@@ -135,12 +135,15 @@ export async function amountSheet(opts) {
           <input data-o="grams" inputmode="decimal" value="${shown()}" aria-label="Amount">
           <button data-act="inc" aria-label="More">+</button>
         </div>
-        ${units.length > 1
-          ? `<div class="seg" data-o="units">${units.map((u) => `<button data-act="unit" data-u="${u.key}">${u.label}</button>`).join('')}</div>`
+        ${units.length > 1 || canSetPieces
+          // A dropdown like on Create food. "pieces" is always offered; if this food doesn't know its pieces yet, picking it asks once.
+          ? `<select class="unit-select" data-o="unit" aria-label="Unit" style="width:auto;min-width:96px">
+              ${canSetPieces ? '<option value="setpc">pieces</option>' : ''}
+              ${units.map((u) => `<option value="${u.key}">${u.label}</option>`).join('')}</select>`
           : `<span class="muted">${units[0].label}</span>`}
       </div>
       ${units.length > 1 ? '<span class="note" data-o="equiv"></span>' : ''}
-      ${canSetPieces ? `<div data-o="pieces"><button class="link" data-act="pieces" style="font-size:13px;padding:2px 0">Count in pieces ›</button></div>` : ''}
+      ${canSetPieces ? '<div data-o="pieces"></div>' : ''}
     </div>
     <div class="tiles">
       <div class="t-p">Protein<b data-o="p"></b></div>
@@ -161,7 +164,7 @@ export async function amountSheet(opts) {
 
   function update() {
     const m = scale(food.per100, state.grams);
-    sheet.querySelectorAll('[data-act="unit"]').forEach((b) => b.classList.toggle('on', b.dataset.u === state.unit));
+    if ($('unit') && !state.settingPieces) $('unit').value = state.unit;
     if (units.length > 1) {
       const others = units.filter((u) => u.key !== state.unit).map((u) => { const n = (u.key === 'base' ? r1 : r2)(state.grams / u.per); return `${n} ${n === 1 ? u.label.replace(/s$/, '') : u.label}`; });
       $('equiv').textContent = `= ${others.join(' = ')}${!hasServing ? '' : food.servingUnit === 'pieces' && food.servingQty === 1 ? ` · 1 piece is ${r1(food.servingG)} ${base}` : ` · 1 serving is ${servingLabel(food)}`}`;
@@ -198,18 +201,39 @@ export async function amountSheet(opts) {
     update();
   });
 
+  $('unit')?.addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (v === 'setpc') {
+      // Ask once how pieces relate to this food, e.g. "1 serving = 6 pieces" or "1 piece = 12 g"
+      state.settingPieces = true;
+      sheet.querySelector('.stepper').style.opacity = '.35'; gramsInput.disabled = true; // the amount waits until pieces are saved
+      $('pieces').innerHTML = `<div class="tile stack gap8" style="padding:12px 14px">
+        <span style="font-size:14px;font-weight:500">${hasServing ? `How many pieces in 1 serving (${esc(servingLabel(food))})?` : 'How much does 1 piece weigh?'}</span>
+        <div class="row gap8" style="align-items:center">
+          ${hasServing ? '<span class="note">1 serving =</span>' : '<span class="note">1 piece =</span>'}
+          <input class="num-in sm" data-o="pcs" inputmode="decimal" placeholder="${hasServing ? '6' : '30'}" aria-label="${hasServing ? 'Pieces per serving' : `Weight of one piece in ${base}`}" style="width:64px">
+          <span class="note">${hasServing ? 'pieces' : base}</span>
+          <button class="btn dark sm" data-act="savepieces" style="margin-left:auto">Save</button>
+        </div>
+        <span class="note" style="font-size:12px">Saved with this food, so you only do this once.</span></div>`;
+      $('pcs').focus();
+      return;
+    }
+    if (state.settingPieces) { state.settingPieces = false; $('pieces').innerHTML = ''; sheet.querySelector('.stepper').style.opacity = ''; gramsInput.disabled = false; }
+    state.unit = v;
+    gramsInput.value = shown(); update();
+  });
+
   sheet.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
+    if ((act === 'inc' || act === 'dec') && state.settingPieces) return;
     if (act === 'inc' || act === 'dec') {
       // Steps: 1 piece, ½ serving or 10 g/ml, snapping to the nearest step
       const u = unitOf(state.unit);
       const count = Math.max(0, Math.round(state.grams / u.per / u.step + (act === 'inc' ? 1 : -1)) * u.step);
       state.grams = count * u.per;
-      gramsInput.value = shown(); update();
-    } else if (act === 'unit') {
-      state.unit = b.dataset.u;
       gramsInput.value = shown(); update();
     } else if (act === 'group') {
       state.group = state.group === b.dataset.g ? null : b.dataset.g; // tap again to ungroup
@@ -224,17 +248,10 @@ export async function amountSheet(opts) {
       }
       state.adding = false; renderGroups();
     } else if (act === 'submit') {
+      if (state.settingPieces) { toast('Enter how many pieces are in a serving, then tap Save'); $('pcs').focus(); return; }
       if (state.grams <= 0) { toast('Enter an amount'); return; }
       b.disabled = true;
       await onSubmit(state.grams, state.group, state.unit, food); // food may now include pieces
-    } else if (act === 'pieces') {
-      // Ask once how pieces relate to this food, e.g. "1 serving = 6 pieces" or "1 piece = 12 g"
-      $('pieces').innerHTML = `<div class="row gap8 wrap" style="align-items:center">
-        <span class="note" style="font-size:13px">${hasServing ? `1 serving (${esc(servingLabel(food))}) =` : '1 piece ='}</span>
-        <input class="num-in sm" data-o="pcs" inputmode="decimal" aria-label="${hasServing ? 'Pieces per serving' : `Weight of one piece in ${base}`}" style="width:64px">
-        <span class="note" style="font-size:13px">${hasServing ? 'pieces' : base}</span>
-        <button class="btn dark sm" data-act="savepieces">Save</button></div>`;
-      $('pcs').focus();
     } else if (act === 'savepieces') {
       const n = num($('pcs').value);
       if (!n) { toast(hasServing ? 'How many pieces in one serving?' : 'How much does one piece weigh?'); return; }
