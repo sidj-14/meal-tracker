@@ -1,9 +1,9 @@
 // Add food — re-add something you logged before (Recent, by day), pick from My foods, search the USDA database, scan a barcode, or create a food. Choosing a food opens
 // the amount sheet, which adds the entry to today (and saves the food to My foods for next time).
 
-import { allFoods, getFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry } from '../store.js';
+import { allFoods, getFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry, getGroups, BUILTIN_GROUPS } from '../store.js';
 import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
-import { back, go, replace, amountSheet, closeSheet, toast } from '../ui.js';
+import { back, go, replace, amountSheet, openSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
 import { scanFromPhoto } from '../scanner.js';
 
@@ -17,6 +17,9 @@ export default async function add(el, params) {
   let tab = params.get('tab') || (history.length ? 'recent' : 'mine');
   let query = '';
   let online = { query: '', loading: false, results: null, error: '' }; // USDA search state
+  // Select mode on Recent: press and hold an item to start, then tap to tick more, then Add them together
+  let selecting = false;
+  const selected = new Set(); // entry ids
 
   el.innerHTML = `<div class="screen">
     <header class="head row between">
@@ -33,6 +36,7 @@ export default async function add(el, params) {
       <div class="chips" data-o="tabs"></div>
     </div>
     <div class="body" data-o="list" style="gap:8px"></div>
+    <div class="select-bar" data-o="selbar" hidden></div>
   </div>`;
 
   const $ = (k) => el.querySelector(`[data-o="${k}"]`);
@@ -83,7 +87,8 @@ export default async function add(el, params) {
       if (!day || day.date !== e.date) { day = { date: e.date, groups: new Map(), loose: [] }; days.push(day); }
       if (e.group) { if (!day.groups.has(e.group)) day.groups.set(e.group, []); day.groups.get(e.group).push(e); } else day.loose.push(e);
     }
-    const item = (e) => `<button class="list-item" data-act="again" data-id="${esc(e.id)}">
+    const item = (e) => `<button class="list-item recent-item ${selected.has(e.id) ? 'sel' : ''}" data-act="again" data-id="${esc(e.id)}" ${selecting ? `aria-pressed="${selected.has(e.id)}"` : ''}>
+      ${selecting ? '<span class="tick" aria-hidden="true"></span>' : ''}
       <span class="grow"><span class="name">${esc(e.name)}</span><span class="sub">${amountText(e.grams, e)} · P ${r1(e.p)} · C ${r1(e.c)} · F ${r1(e.f)}</span></span>
       <span class="kcal">${fmt(e.kcal)}</span></button>`;
     return days.slice(0, 14).map((day) => `
@@ -91,11 +96,11 @@ export default async function add(el, params) {
         <span class="small muted" style="padding:6px 4px 0;text-transform:uppercase;letter-spacing:.04em">${recentDayName(day.date)}</span>
         ${[...day.groups].map(([g, items]) => `
           <div class="row between" style="padding:2px 4px 0"><span class="title" style="font-size:14px">${esc(g)} <span class="muted" style="font-weight:400">· ${fmt(sum(items).kcal)} kcal</span></span>
-            <button class="chip" data-act="againAll" data-date="${day.date}" data-g="${esc(g)}">Add all</button></div>
+            ${selecting ? '' : `<button class="chip" data-act="againAll" data-date="${day.date}" data-g="${esc(g)}">Add all</button>`}</div>
           ${items.map(item).join('')}`).join('')}
         ${day.loose.map(item).join('')}
       </div>`).join('')
-      + `<span class="note center-text" style="padding:8px">Tap an item to add it to ${esc(dayLabel)}. You can change the amount and group before adding.</span>`;
+      + `<span class="note center-text" style="padding:8px">${selecting ? 'Tap items to select or unselect them.' : `Tap an item to add it to ${esc(dayLabel)}. Press and hold to select several.`}</span>`;
   }
 
   // A logged entry carries a copy of its food, so it can be re-added even if the food was deleted.
@@ -104,7 +109,21 @@ export default async function add(el, params) {
     servingQty: e.servingQty, servingUnit: e.servingUnit,
   };
 
+  function renderSelBar() {
+    const bar = $('selbar');
+    bar.hidden = !selecting;
+    if (!selecting) return;
+    const items = history.filter((e) => selected.has(e.id));
+    const t = sum(items);
+    bar.innerHTML = `<button class="link" data-act="selCancel">Cancel</button>
+      <span class="stack" style="align-items:center;min-width:0"><b style="font-size:15px">${items.length} selected</b><span class="note" style="font-size:12px">${fmt(t.kcal)} kcal · P ${fmt(t.p)} · C ${fmt(t.c)} · F ${fmt(t.f)}</span></span>
+      <button class="btn primary sm" data-act="selAdd" ${items.length ? '' : 'disabled'}>Add</button>`;
+  }
+  function stopSelecting() { selecting = false; selected.clear(); }
+
   function render() {
+    if (selecting && (tab !== 'recent' || query.trim())) stopSelecting(); // select mode is only for Recent
+    renderSelBar();
     const tabBtn = (key, label) => `<button class="chip ${tab === key && !query ? 'on' : ''}" data-act="tab" data-tab="${key}">${label}</button>`;
     $('tabs').innerHTML = tabBtn('recent', 'Recent') + tabBtn('mine', 'My foods')
       + '<a class="chip dashed link-chip" href="#/create">Create</a>';
@@ -205,6 +224,14 @@ export default async function add(el, params) {
       render(); $('q').focus(); // keep the keyboard up for the next search
     }
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));
+    if (act === 'again' && selecting) {
+      const id = b.dataset.id;
+      if (selected.has(id)) selected.delete(id); else selected.add(id);
+      if (!selected.size) stopSelecting(); // unticking the last one leaves select mode
+      render(); return;
+    }
+    if (act === 'selCancel') { stopSelecting(); render(); return; }
+    if (act === 'selAdd') { addSelected(); return; }
     if (act === 'again') {
       const e = history.find((x) => x.id === b.dataset.id);
       pick(await foodOf(e), '', { grams: e.grams, group: e.group });
@@ -217,6 +244,68 @@ export default async function add(el, params) {
     }
     if (act === 'pickOnline') pick(online.results.find((f) => f.id === b.dataset.id), 'From USDA FoodData Central');
   };
+
+  // ----- Press and hold on a Recent item to start selecting -----
+  let holdTimer = null, holdStart = null, justHeld = false;
+  const list = $('list');
+  list.addEventListener('pointerdown', (e) => {
+    justHeld = false; // a new touch: forget the last long press (iPhone doesn't always send a tap after one)
+    const b = e.target.closest('.recent-item');
+    if (!b || selecting) return;
+    holdStart = { x: e.clientX, y: e.clientY };
+    holdTimer = setTimeout(() => {
+      holdTimer = null; justHeld = true;
+      selecting = true; selected.add(b.dataset.id);
+      if (navigator.vibrate) navigator.vibrate(10);
+      render();
+    }, 450);
+  });
+  const cancelHold = () => { clearTimeout(holdTimer); holdTimer = null; };
+  list.addEventListener('pointermove', (e) => { // moving the finger = scrolling, not holding
+    if (holdTimer && holdStart && Math.hypot(e.clientX - holdStart.x, e.clientY - holdStart.y) > 10) cancelHold();
+  });
+  list.addEventListener('pointerup', cancelHold);
+  list.addEventListener('pointercancel', cancelHold);
+  list.addEventListener('contextmenu', (e) => { if (e.target.closest('.recent-item')) e.preventDefault(); });
+  // The tap that ends a long press shouldn't also open the amount sheet or untick the item
+  el.addEventListener('click', (e) => { if (justHeld) { justHeld = false; e.stopPropagation(); e.preventDefault(); } }, true);
+
+  async function addSelected() {
+    const items = history.filter((e) => selected.has(e.id)).reverse(); // oldest first, like you logged them
+    const t = sum(items);
+    const groups = BUILTIN_GROUPS.concat(await getGroups());
+    let choice = 'keep'; // 'keep' = each item goes back into the group it was in
+    const sheet = openSheet(`<div class="sheet-pad">
+      <div class="handle"></div>
+      <div class="stack"><span class="h2">Add ${items.length} item${items.length === 1 ? '' : 's'}</span>
+        <span class="note" style="font-size:13px">${fmt(t.kcal)} kcal · P ${fmt(t.p)} · C ${fmt(t.c)} · F ${fmt(t.f)} · same amounts as before</span></div>
+      <div class="stack gap6">${items.map((e) => `<div class="row between" style="font-size:14px"><span>${esc(e.name)} <span class="muted">· ${amountText(e.grams, e)}</span></span><span class="muted">${fmt(e.kcal)}</span></div>`).join('')}</div>
+      <div class="stack gap8"><span class="muted">Group</span><div class="chips" data-o="g"></div></div>
+      <button class="btn primary" data-act="go" data-o="go"></button>
+    </div>`);
+    const draw = () => {
+      sheet.querySelector('[data-o="g"]').innerHTML = [['keep', 'As before'], ['none', 'No group'], ...groups.map((g) => [g, g])]
+        .map(([v, label]) => `<button class="chip ${choice === v ? 'on' : ''}" data-act="g" data-v="${esc(v)}">${esc(label)}</button>`).join('');
+      sheet.querySelector('[data-o="go"]').textContent = choice === 'keep' || choice === 'none' ? `Add to ${dayLabel}` : `Add to ${choice}`;
+    };
+    draw();
+    sheet.onclick = async (ev) => {
+      const b = ev.target.closest('[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'g') { choice = b.dataset.v; draw(); }
+      if (b.dataset.act === 'go') {
+        b.disabled = true;
+        for (const e of items) {
+          const group = choice === 'keep' ? e.group : choice === 'none' ? null : choice;
+          const f = await foodOf(e);
+          await addEntry({ ...f, lastUnit: e.unit || f.lastUnit }, e.grams, group, day);
+        }
+        closeSheet();
+        toast(`Added ${items.length} item${items.length === 1 ? '' : 's'}`);
+        backToDay();
+      }
+    };
+  }
 
   render();
   // Coming back from "Create food" opens the food you just made.
