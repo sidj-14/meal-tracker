@@ -4,7 +4,7 @@
 // Also used to edit an existing food: '#/create?edit=<id>'.
 
 import { getFood, saveFood, deleteFood } from '../store.js';
-import { esc, fmt, r1, num, kcalFromMacros, SERVING_UNITS, baseOf, toBase } from '../util.js';
+import { esc, fmt, r1, num, kcalFromMacros, SERVING_UNITS, baseOf, toBase, isSpoon } from '../util.js';
 import { back, toast } from '../ui.js';
 import { readLabel } from '../label-reader.js';
 
@@ -17,7 +17,8 @@ export default async function create(el, params) {
     ? { name: editing.name, brand: editing.brand || '', basis: counted ? 'serving' : 'g100',
         servingQty: editing.servingG ? String(r1(editing.servingQty || editing.servingG)) : '',
         servingUnit: editing.servingUnit || editing.baseUnit || 'g',
-        servingWeight: editing.servingUnit === 'pieces' && !counted ? String(r1(editing.servingG)) : '',
+        // a weight is kept for pieces ("2 cookies (28 g)") and spoons ("2 tbsp (32 g)")
+        servingWeight: (editing.servingUnit === 'pieces' && !counted) || (isSpoon(editing.servingUnit) && editing.baseUnit === 'g') ? String(r1(editing.servingG)) : '',
         kcal: String(r1(editing.per100.kcal * toServing)), p: String(r1(editing.per100.p * toServing)), c: String(r1(editing.per100.c * toServing)), f: String(r1(editing.per100.f * toServing)) }
     : { name: params.get('name') || '', brand: params.get('brand') || '', basis: 'g100',
         servingQty: '', servingUnit: 'g', servingWeight: '', kcal: '', p: '', c: '', f: '' };
@@ -67,13 +68,21 @@ export default async function create(el, params) {
 
   // Base unit: ml for drinks (serving in ml / fl oz), 'pc' for counted things with no weight, else grams.
   const isPieces = () => s.servingUnit === 'pieces';
+  const hasWeightField = () => isPieces() || isSpoon(s.servingUnit); // these can also have "Weight of serving"
   const baseUnit = () => {
     if (!num(s.servingQty)) return 'g';
     if (isPieces()) return num(s.servingWeight) ? 'g' : 'pc';
+    if (isSpoon(s.servingUnit) && num(s.servingWeight)) return 'g'; // "2 tbsp (32 g)" -> a weighed food
     return baseOf(s.servingUnit);
   };
   // One serving in base units (g, ml, or number of pieces)
-  const servingBase = () => (isPieces() ? (num(s.servingWeight) || num(s.servingQty)) : toBase(num(s.servingQty), s.servingUnit));
+  const servingBase = () => {
+    if (isPieces()) return num(s.servingWeight) || num(s.servingQty);
+    if (isSpoon(s.servingUnit) && num(s.servingWeight)) return num(s.servingWeight);
+    return toBase(num(s.servingQty), s.servingUnit);
+  };
+  // Grams per ml, known when a spoon serving has a weight: lets you log "1 tbsp" accurately later
+  const gPerMl = () => (isSpoon(s.servingUnit) && num(s.servingQty) && num(s.servingWeight) ? num(s.servingWeight) / toBase(num(s.servingQty), s.servingUnit) : null);
 
   function per100() {
     const isServing = s.basis === 'serving';
@@ -99,11 +108,13 @@ export default async function create(el, params) {
           </select>
         </span>
       </div>
-      ${isPieces() ? `<div class="form-row" style="margin-top:12px">
+      ${hasWeightField() ? `<div class="form-row" style="margin-top:12px">
         <span>Weight of serving <span class="small muted">(optional)</span></span>
         <span class="row gap6"><input class="num-in" style="width:72px" data-k="servingWeight" inputmode="decimal" value="${esc(s.servingWeight)}" aria-label="Weight of one serving in grams"><span class="unit" style="width:88px;padding-left:8px">g</span></span>
       </div>
-      <span class="note" style="display:block;margin-top:6px">E.g. "2 cookies (28 g)": 2 pieces, 28 g. No weight? Leave it blank and log by pieces.</span>` : ''}`;
+      <span class="note" style="display:block;margin-top:6px">${isPieces()
+        ? 'E.g. "2 cookies (28 g)": 2 pieces, 28 g. No weight? Leave it blank and log by pieces.'
+        : `E.g. "2 tbsp (32 g)": 2 tbsp, 32 g. No weight? Leave it blank and it's treated like a liquid (1 ${esc(s.servingUnit)} = ${toBase(1, s.servingUnit)} ml).`}</span>` : ''}`;
     bindInputs();
     update();
   }
@@ -122,7 +133,7 @@ export default async function create(el, params) {
     if (s.basis === 'g100' && isPieces() && num(s.servingQty) && !num(s.servingWeight)) {
       $('per100').textContent = 'To use "Per 100 g" with pieces, enter the weight of a serving, or switch to "Per serving".';
     } else if (s.basis === 'serving') {
-      $('per100').textContent = !num(s.servingQty) ? 'Enter the serving size from the label (g, ml, oz, fl oz or pieces).'
+      $('per100').textContent = !num(s.servingQty) ? 'Enter the serving size from the label (g, ml, oz, fl oz, tsp, tbsp, cup or pieces).'
         : b === 'pc' ? `Per piece: ${fmt(v.kcal / 100)} kcal · P ${r1(v.p / 100)} · C ${r1(v.c / 100)} · F ${r1(v.f / 100)}`
         : `Stored per 100 ${b}: ${fmt(v.kcal)} kcal · P ${v.p} · C ${v.c} · F ${v.f}${conv}`;
     } else {
@@ -198,6 +209,7 @@ export default async function create(el, params) {
         ...(editing || {}), name, brand: s.brand.trim(), per100: v, barcode, baseUnit: baseUnit(),
         servingG: num(s.servingQty) ? servingBase() : null,     // serving in g, ml or pieces
         servingQty: num(s.servingQty) || null, servingUnit: num(s.servingQty) ? s.servingUnit : null, // as printed
+        gPerMl: gPerMl(),
       });
       toast(editing ? 'Food updated' : 'Food saved');
       if (editing) back('#/add?tab=mine');

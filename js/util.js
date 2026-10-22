@@ -31,13 +31,25 @@ export const r1 = (n) => Math.round(n * 10) / 10;
 export function num(v) { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; }
 // ----- Units -----
 // Each food is measured in a base unit:
-//   'g'  grams (most foods)       'ml' millilitres (drinks with a serving in ml / fl oz)
+//   'g'  grams (most foods)       'ml' millilitres (drinks, sauces measured by the spoon)
 //   'pc' pieces (things you count, like cookies, when the weight isn't known)
-// Serving sizes can be typed in g, ml, oz, fl oz or pieces and are converted to the base unit.
-export const SERVING_UNITS = ['g', 'ml', 'oz', 'fl oz', 'pieces'];
-const TO_BASE = { g: 1, ml: 1, oz: 28.3495, 'fl oz': 29.5735 };
-export const baseOf = (unit) => (unit === 'ml' || unit === 'fl oz' ? 'ml' : 'g');
+// Serving sizes can be typed in g, ml, oz, fl oz, tsp, tbsp, cup or pieces and are converted to the base unit.
+export const SERVING_UNITS = ['g', 'ml', 'oz', 'fl oz', 'tsp', 'tbsp', 'cup', 'pieces'];
+// Spoons and cups use the sizes US nutrition labels use: 1 tsp = 5 ml, 1 tbsp = 15 ml, 1 cup = 240 ml.
+export const SPOONS = { tsp: 5, tbsp: 15, cup: 240 };
+export const isSpoon = (unit) => unit in SPOONS;
+const TO_BASE = { g: 1, ml: 1, oz: 28.3495, 'fl oz': 29.5735, ...SPOONS };
+export const baseOf = (unit) => (unit === 'ml' || unit === 'fl oz' || isSpoon(unit) ? 'ml' : 'g');
 export const toBase = (qty, unit) => qty * (TO_BASE[unit] || 1);
+// Finds a spoon/cup measure in label text: "2 Tbsp (32g)" -> { qty: 2, unit: 'tbsp' }, "1/4 cup" -> { qty: 0.25, unit: 'cup' }
+export function spoonFromText(text) {
+  const m = String(text || '').match(/(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*(tsp|teaspoons?|tbsp|tbs|tablespoons?|cups?)\b/i);
+  if (!m) return null;
+  const qty = m[1].trim().split(/\s+/).reduce((a, part) => a + (part.includes('/') ? part.split('/')[0] / part.split('/')[1] : parseFloat(part)), 0);
+  const w = m[2].toLowerCase();
+  const unit = w.startsWith('c') ? 'cup' : /^(tsp|tea)/.test(w) ? 'tsp' : 'tbsp';
+  return qty > 0 ? { qty: Math.round(qty * 1000) / 1000, unit } : null;
+}
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const r2 = (n) => Math.round(n * 100) / 100;
 
@@ -54,6 +66,14 @@ export function amountUnits(food) {
   // Ounces for weighed foods, fluid ounces for drinks
   if (base === 'g') units.push({ key: 'oz', label: 'oz', per: TO_BASE.oz, step: 0.5 });
   if (base === 'ml') units.push({ key: 'floz', label: 'fl oz', per: TO_BASE['fl oz'], step: 1 });
+  // Spoons and cups. For weighed foods we need grams per ml: known when the label says e.g. "2 tbsp (32 g)"
+  // (saved as food.gPerMl), otherwise we assume 1 g per ml and mark it as approximate.
+  if (base !== 'pc') {
+    const density = base === 'ml' ? 1 : food.gPerMl || 1;
+    const approx = base === 'g' && !food.gPerMl;
+    const steps = { tsp: 1, tbsp: 0.5, cup: 0.25 };
+    for (const [k, ml] of Object.entries(SPOONS)) units.push({ key: k, label: k, per: ml * density, step: steps[k], spoon: true, approx });
+  }
   return units;
 }
 
@@ -74,6 +94,9 @@ export function servingLabel(food) {
 export function amountText(amount, item = {}) {
   const base = item.baseUnit || 'g';
   if (base === 'pc') return plural(r2(amount), 'piece');
+  // Logged in oz, fl oz, tsp, tbsp or cup: show it that way, e.g. "2 tbsp · 30 g"
+  const u = ['oz', 'floz', 'tsp', 'tbsp', 'cup'].includes(item.unit) && amountUnits(item).find((x) => x.key === item.unit);
+  if (u) return `${r2(amount / u.per)} ${u.label} · ${r1(amount)} ${base}`;
   if (item.servingUnit === 'pieces' && item.servingQty && item.servingG) {
     return `${plural(r2(amount / (item.servingG / item.servingQty)), 'piece')} · ${r1(amount)} ${base}`;
   }

@@ -8,7 +8,7 @@
 // Both return foods in the app's own shape: { id, name, brand, per100: {kcal,p,c,f}, servingG, barcode, source }.
 
 import { kv } from './store.js';
-import { r1, kcalFromMacros } from './util.js';
+import { r1, kcalFromMacros, spoonFromText, toBase } from './util.js';
 
 const OFF = 'https://world.openfoodfacts.org/api/v2/product/';
 const USDA = 'https://api.nal.usda.gov/fdc/v1/foods/search';
@@ -57,14 +57,18 @@ export async function lookupBarcode(code) {
   if (!name || kcal === null || prot === null || carb === null || fat === null) return { status: 'incomplete', name, brand };
   const servingG = n(p.serving_quantity) || null;
   const pieces = servingG ? piecesPerServing(p.serving_size) : null;
+  const isMl = /ml/i.test(p.serving_quantity_unit || '');
+  // "2 tbsp (32 g)": remember the spoon size and how heavy it is, so you can log by the spoon
+  const spoon = servingG && !pieces && !isMl ? spoonFromText(p.serving_size) : null;
   return {
     status: 'found',
     food: {
       id: `off-${code}`, name, brand, barcode: code, source: 'Open Food Facts',
       per100: { kcal: r1(kcal), p: r1(prot), c: r1(carb), f: r1(fat) },
       servingG,
-      baseUnit: /ml/i.test(p.serving_quantity_unit || '') ? 'ml' : 'g',
+      baseUnit: isMl ? 'ml' : 'g',
       ...(pieces ? { servingUnit: 'pieces', servingQty: pieces } : {}),
+      ...(spoon ? { servingUnit: spoon.unit, servingQty: spoon.qty, gPerMl: r1(servingG / toBase(spoon.qty, spoon.unit) * 100) / 100 } : {}),
     },
   };
 }

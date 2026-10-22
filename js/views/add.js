@@ -106,7 +106,7 @@ export default async function add(el, params) {
   // A logged entry carries a copy of its food, so it can be re-added even if the food was deleted.
   const foodOf = async (e) => (await getFood(e.foodId)) || {
     id: e.foodId, name: e.name, per100: e.per100, servingG: e.servingG, baseUnit: e.baseUnit,
-    servingQty: e.servingQty, servingUnit: e.servingUnit,
+    servingQty: e.servingQty, servingUnit: e.servingUnit, gPerMl: e.gPerMl,
   };
 
   function renderSelBar() {

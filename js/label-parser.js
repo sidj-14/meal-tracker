@@ -6,6 +6,7 @@
 //
 // Handles US labels (values per serving, "Serving size 1 cup (228g)") and
 // EU-style labels (values "per 100 g", energy in "kcal").
+import { spoonFromText } from './util.js';
 
 const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
 
@@ -62,6 +63,13 @@ export function parseLabel(text) {
     const hit = metric || any;
     if (hit) { out.servingQty = parseFloat(hit[1]); out.servingUnit = unitOf(hit[2]); }
     else if (g9) { out.servingQty = parseFloat(g9[1]); out.servingUnit = 'g'; }
+    // Spoon servings with a weight: "2 Tbsp (32g)" -> 2 tbsp, weighing 32 g
+    const spoon = spoonFromText(t);
+    if (spoon && out.servingUnit === 'g') {
+      out.servingWeight = out.servingQty;
+      out.servingQty = spoon.qty;
+      out.servingUnit = spoon.unit;
+    }
     // Counted servings: "2 cookies (28g)", "1 bar (40g)", "3 crackers". Measures like cup/tbsp aren't pieces.
     const count = t.match(/(?:^|\s)(\d+(?:\.\d+)?)\s+([a-z]{3,})/i);
     const measure = /^(cups?|tbsps?|tsps?|tablespoons?|teaspoons?|oz|fl|grams?|ml|container|package|servings?)$/i;

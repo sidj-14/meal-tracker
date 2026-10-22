@@ -137,7 +137,7 @@ export default async function today(el, params = new URLSearchParams()) {
       if (b.dataset.act === 'edit') {
         const entry = entries.find((x) => x.id === b.dataset.id);
         amountSheet({
-          food: { id: entry.foodId, name: entry.name, per100: entry.per100, servingG: entry.servingG, baseUnit: entry.baseUnit, servingQty: entry.servingQty, servingUnit: entry.servingUnit }, grams: entry.grams, group: entry.group, mode: 'edit', unit: entry.unit,
+          food: { id: entry.foodId, name: entry.name, per100: entry.per100, servingG: entry.servingG, baseUnit: entry.baseUnit, servingQty: entry.servingQty, servingUnit: entry.servingUnit, gPerMl: entry.gPerMl }, grams: entry.grams, group: entry.group, mode: 'edit', unit: entry.unit,
           onSubmit: async (grams, group, unit, food) => { await updateEntry(entry, grams, group, unit, food); closeSheet(); toast('Saved'); today(el, params); },
           onDelete: async () => { await deleteEntry(entry.id); closeSheet(); toast('Deleted'); today(el, params); },
         });

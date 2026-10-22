@@ -166,8 +166,13 @@ export async function amountSheet(opts) {
     const m = scale(food.per100, state.grams);
     if ($('unit') && !state.settingPieces) $('unit').value = state.unit;
     if (units.length > 1) {
-      const others = units.filter((u) => u.key !== state.unit).map((u) => { const n = (u.key === 'base' ? r1 : r2)(state.grams / u.per); return `${n} ${n === 1 ? u.label.replace(/s$/, '') : u.label}`; });
-      $('equiv').textContent = `= ${others.join(' = ')}${!hasServing ? '' : food.servingUnit === 'pieces' && food.servingQty === 1 ? ` · 1 piece is ${r1(food.servingG)} ${base}` : ` · 1 serving is ${servingLabel(food)}`}`;
+      // "= 0.33 servings = 14.2 g = 0.5 oz" (spoons left out to keep it short)
+      const cur = unitOf(state.unit);
+      const others = units.filter((u) => u.key !== state.unit && !u.spoon).map((u) => { const n = (u.key === 'base' ? r1 : r2)(state.grams / u.per); return `${n} ${n === 1 ? u.label.replace(/s$/, '') : u.label}`; });
+      // With a spoon picked, say what one is worth: "1 tbsp ≈ 15 g" (≈ when the weight per spoon is assumed)
+      const spoonNote = cur.spoon && base === 'g' ? ` · 1 ${cur.label} ${cur.approx ? '≈' : '='} ${r1(cur.per)} g${cur.approx ? ' (assumes 1 g per ml)' : ''}` : '';
+      const servNote = !hasServing ? '' : food.servingUnit === 'pieces' && food.servingQty === 1 ? ` · 1 piece is ${r1(food.servingG)} ${base}` : ` · 1 serving is ${servingLabel(food)}`;
+      $('equiv').textContent = `= ${others.join(' = ')}${spoonNote || servNote}`;
     }
     $('kcal').textContent = fmt(m.kcal);
     $('p').textContent = `${r1(m.p)} g`;
