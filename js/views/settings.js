@@ -42,7 +42,7 @@ export default async function settings(el) {
 
       <div class="card" style="gap:10px;padding:18px 20px">
         <span class="title">Food search key <span class="small muted" style="font-weight:400">(optional)</span></span>
-        <span class="note">Food search uses USDA's free database. Without a key it allows about 30 searches an hour. For more, get a free key at <a href="https://api.data.gov/signup/" target="_blank" rel="noopener">api.data.gov/signup</a> (it's emailed to you instantly) and paste it here.</span>
+        <span class="note">Food search uses USDA's free database and works without setup. If you ever see a search limit message, get your own free key at <a href="https://api.data.gov/signup/" target="_blank" rel="noopener">api.data.gov/signup</a> and paste it here.</span>
         <input class="field" data-key="usda" value="${esc(usdaKey)}" placeholder="Paste your key" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="USDA API key">
       </div>
 
@@ -51,7 +51,7 @@ export default async function settings(el) {
         <label class="setting-row" style="cursor:pointer"><span>Restore from a backup</span><span class="val">Import ›</span>
           <input type="file" accept="application/json,.json" data-act="import" hidden></label>
       </div>
-      <span class="note center-text">Meal Tracker · version 2.4</span>
+      <span class="note center-text">Meal Tracker · version 2.5</span>
     </div>
     ${tabbar('settings')}
   </div>`;

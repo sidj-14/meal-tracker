@@ -1,8 +1,9 @@
 // food-api.js — looking foods up online.
 //
 // Barcodes -> Open Food Facts (free, crowd-sourced, mostly packaged foods). No key needed.
-// Search   -> USDA FoodData Central (free, generic foods like "banana, raw"). Needs an API key;
-//             "DEMO_KEY" works for light use (30 searches/hour, 50/day). Add your own free key in Settings.
+// Search   -> USDA FoodData Central (free, generic foods like "banana, raw"). Needs an API key.
+//             The app ships with a shared key (about 1,000 searches/hour for everyone together).
+//             A key pasted in Settings is used instead, if there is one.
 //
 // Both return foods in the app's own shape: { id, name, brand, per100: {kcal,p,c,f}, servingG, barcode, source }.
 
@@ -11,6 +12,9 @@ import { r1, kcalFromMacros } from './util.js';
 
 const OFF = 'https://world.openfoodfacts.org/api/v2/product/';
 const USDA = 'https://api.nal.usda.gov/fdc/v1/foods/search';
+// Free api.data.gov key, built in so search works for everyone without setup. It's visible to anyone
+// who reads this file; that's fine for a free, read-only key. If it gets abused, make a new one and swap it here.
+const SHARED_KEY = 'bfq8jcWP9mThWQzJLGhcDNMkJfdmGnmr6HLNLMkJ';
 
 export class LookupError extends Error {}
 
@@ -74,7 +78,7 @@ function nutrient(list, numbers, ids, nameStart, unit) {
 }
 
 export async function searchUSDA(query) {
-  const key = (await kv('usdaKey', '')).trim() || 'DEMO_KEY';
+  const key = (await kv('usdaKey', '')).trim() || SHARED_KEY;
   const base = `${USDA}?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}&pageSize=25`;
   let res;
   try {
@@ -85,8 +89,8 @@ export async function searchUSDA(query) {
     throw new LookupError("Couldn't reach the food database. Check your internet connection.");
   }
   if (res.status === 429 || res.status === 403) {
-    throw new LookupError(key === 'DEMO_KEY'
-      ? 'Free search limit reached for now. Add your own free key in Settings → Food search key.'
+    throw new LookupError(key === SHARED_KEY
+      ? 'Search limit reached for the hour. Try again later, or add your own free key in Settings → Food search key.'
       : 'Search key not accepted or limit reached. Check Settings → Food search key.');
   }
   if (!res.ok) throw new LookupError(`Food search failed (error ${res.status}). Try again in a minute.`);
