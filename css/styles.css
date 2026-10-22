@@ -118,6 +118,10 @@ h1, h2, h3 { margin: 0; }
 .label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
 .search { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 14px; padding: 0 14px; height: 46px; }
 .search input { border: 0; outline: none; background: transparent; flex: 1; font-size: 16px; min-width: 0; }
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; } /* use our own ✕ instead */
+.clear-q { flex-shrink: 0; width: 28px; height: 28px; margin-right: -6px; border: 0; border-radius: 999px; background: #ECEAE5; color: var(--muted, #6B6F6C); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.clear-q[hidden] { display: none; }
+.clear-q svg { width: 14px; height: 14px; }
 .iconbtn { width: 46px; height: 46px; border: 0; border-radius: 14px; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .stepper { display: flex; align-items: center; background: var(--bg); border-radius: 12px; }
 .stepper button { border: 0; background: transparent; width: 44px; height: 44px; font-size: 20px; }
