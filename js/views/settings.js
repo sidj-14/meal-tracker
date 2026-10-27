@@ -9,6 +9,8 @@ export default async function settings(el) {
   const t = targetOn(targetList, dateStr());
   const groups = await getGroups();
   const usdaKey = await kv('usdaKey', '');
+  // Profile picture: { type: 'emoji', value: '🥑' } or { type: 'photo', value: 'data:image/jpeg;base64,...' } or null
+  let avatar = await kv('avatar', null);
 
   const input = (key, label, unit, width = 72, mode = 'numeric') => `
     <label class="form-row"><span>${label}</span>
@@ -19,7 +21,7 @@ export default async function settings(el) {
     <header class="head"><h1 class="h1">Settings</h1></header>
     <div class="body">
       <div class="card row gap14" style="flex-direction:row;padding:18px 20px">
-        <div data-o="avatar" style="width:52px;height:52px;border-radius:999px;background:#E4ECE2;color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;flex-shrink:0"></div>
+        <button class="avatar" data-act="avatar" aria-label="Change profile picture"><span data-o="avatar" class="avatar-face"></span><span class="avatar-edit" aria-hidden="true">✎</span></button>
         <div class="stack"><span data-o="name" style="font-weight:600;font-size:16px"></span><span class="note" style="font-size:13px">Data saved on this phone</span></div>
       </div>
 
@@ -51,7 +53,7 @@ export default async function settings(el) {
         <label class="setting-row" style="cursor:pointer"><span>Restore from a backup</span><span class="val">Import ›</span>
           <input type="file" accept="application/json,.json" data-act="import" hidden></label>
       </div>
-      <span class="note center-text">Meal Tracker · version 2.13</span>
+      <span class="note center-text">Meal Tracker · version 2.14</span>
     </div>
     ${tabbar('settings')}
   </div>`;
@@ -60,7 +62,12 @@ export default async function settings(el) {
   const showName = () => {
     const n = (profile.name || '').trim();
     $('name').textContent = n || 'Your profile';
-    $('avatar').textContent = n ? n[0].toUpperCase() : '·';
+    // Photo, emoji, or the first letter of your name
+    const a = $('avatar');
+    if (avatar?.type === 'photo') a.innerHTML = `<img src="${avatar.value}" alt="">`;
+    else if (avatar?.type === 'emoji') { a.textContent = avatar.value; a.className = 'avatar-face emoji'; return; }
+    else a.textContent = n ? n[0].toUpperCase() : '·';
+    a.className = 'avatar-face';
   };
   showName();
 
@@ -77,6 +84,7 @@ export default async function settings(el) {
     const act = b.dataset.act;
     if (act === 'ws') { await setKV('weekStart', b.dataset.v); settings(el); }
     if (act === 'groups') manageGroups();
+    if (act === 'avatar') pickAvatar();
     if (act === 'export') exportBackup();
   };
 
@@ -111,6 +119,54 @@ export default async function settings(el) {
     a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ----- Profile picture: pick an emoji, type any emoji, or choose a photo (e.g. a cartoon of yourself) -----
+  const EMOJIS = ['😀', '😎', '🤓', '🥳', '😇', '🙂', '🧑', '👩', '👨', '🧕', '👩‍🦱', '👨‍🦱', '👩‍🦰', '👱‍♀️', '🧔', '👵',
+    '🏃‍♀️', '🏋️‍♀️', '🧘‍♀️', '🚴‍♀️', '💃', '🥑', '🥗', '🍓', '🍑', '🥦', '🍳', '🍜', '🐱', '🐶', '🦊', '🐼'];
+  function pickAvatar() {
+    const sheet = openSheet(`<div class="sheet-pad">
+      <div class="handle"></div>
+      <div class="row between"><span class="h2">Profile picture</span><button class="close" data-act="close" aria-label="Close">${ICON.close}</button></div>
+      <div class="emoji-grid">${EMOJIS.map((e) => `<button class="emoji-btn" data-act="emoji" data-e="${e}" aria-label="${e}">${e}</button>`).join('')}</div>
+      <div class="row gap8"><input class="field" data-o="ownEmoji" placeholder="Or type any emoji" aria-label="Type an emoji" maxlength="16" style="flex:1"><button class="btn dark sm" data-act="useOwn">Use</button></div>
+      <label class="btn soft" style="cursor:pointer">Choose a photo or cartoon<input type="file" accept="image/*" hidden data-o="photo"></label>
+      ${avatar ? '<button class="btn text danger" data-act="remove">Remove picture</button>' : ''}
+      <span class="note center-text">Saved on this phone only. Tip: save a Memoji or Bitmoji image to Photos, then choose it here.</span>
+    </div>`);
+    const save = async (a) => { avatar = a; await setKV('avatar', a); closeSheet(); showName(); toast(a ? 'Picture updated' : 'Picture removed'); };
+    sheet.querySelector('[data-o="photo"]').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try { await save({ type: 'photo', value: await squarePhoto(file) }); } catch { toast("Couldn't open that picture"); }
+    });
+    sheet.onclick = async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'close') closeSheet();
+      if (b.dataset.act === 'emoji') save({ type: 'emoji', value: b.dataset.e });
+      if (b.dataset.act === 'useOwn') {
+        const v = sheet.querySelector('[data-o="ownEmoji"]').value.trim();
+        // keep just the first emoji/character typed (emoji can be several code points, so use the browser's splitter)
+        const first = v && (window.Intl?.Segmenter ? [...new Intl.Segmenter().segment(v)][0].segment : [...v][0]);
+        if (!first) { toast('Type an emoji first'); return; }
+        save({ type: 'emoji', value: first });
+      }
+      if (b.dataset.act === 'remove') save(null);
+    };
+  }
+  // Crop a photo to a centered square and shrink it to 256×256, so it's small enough to keep in the app's storage
+  async function squarePhoto(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = url; });
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 256, 256); // transparent stickers get a white background
+      ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 256, 256);
+      return c.toDataURL('image/jpeg', 0.85);
+    } finally { URL.revokeObjectURL(url); }
   }
 
   function manageGroups() {
