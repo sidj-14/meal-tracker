@@ -196,13 +196,19 @@ h1, h2, h3 { margin: 0; }
 .goal-arrow { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
 .goal-opt.on .goal-arrow { background: var(--accent); color: #fff; }
 /* Trends: average deficit / surplus box */
-.balance { border-radius: 18px; padding: 14px 18px; display: flex; align-items: baseline; gap: 10px; background: #fff; box-shadow: 0 6px 18px rgba(43,46,44,.08); }
+.balance-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+/* A small floating pill: "300 deficit", centered. Press and hold to choose days. */
+.balance { display: inline-flex; align-items: baseline; gap: 8px; padding: 10px 22px; border-radius: 999px; background: #fff; box-shadow: 0 6px 18px rgba(43,46,44,.10); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; cursor: pointer; }
+.balance .big-num { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.1; }
+.balance .word { font-weight: 600; font-size: 15px; color: var(--muted); }
 .balance.good { background: #E6EEE3; }           /* matches your goal: sage green */
 .balance.off { background: #F7E4E2; }            /* opposite of your goal: muted red */
-.balance .big-num { font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.1; }
-.balance.good .big-num, .balance.good .big-num + span { color: var(--accent-ink); }
-.balance.off .big-num, .balance.off .big-num + span { color: #B0504A; }
-
+.balance.good .big-num, .balance.good .word { color: var(--accent-ink); }
+.balance.off .big-num, .balance.off .word { color: #B0504A; }
+.day-pick { cursor: pointer; }
+.day-pick .tick { width: 22px; height: 22px; border-radius: 999px; border: 2px solid var(--dash); flex-shrink: 0; }
+.day-pick.on .tick { border-color: var(--accent); background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12l4 4 8-8'/%3E%3C/svg%3E") center/14px no-repeat; }
+.day-pick:not(.on) { opacity: .6; }
 /* Trends: small stat tiles (fill rate, on target, protein) */
 .card.stat { gap: 4px; padding: 14px 12px; border-radius: 18px; }
 .stat-num { font-weight: 600; font-size: 20px; }

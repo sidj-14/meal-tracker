@@ -4,9 +4,9 @@
 // Only "logged" days count toward averages: a day with no entries is treated as
 // "not tracked", not as "ate nothing", so a forgotten day doesn't drag your average down.
 
-import { getTargets, targetOn, entriesBetween, kv } from '../store.js';
+import { getTargets, targetOn, entriesBetween, kv, setKV } from '../store.js';
 import { fmt, sum, dateStr, addDays, parseDate, shortDate, kcalFromMacros } from '../util.js';
-import { tabbar } from '../ui.js';
+import { tabbar, openSheet, closeSheet } from '../ui.js';
 
 const RANGES = { week: 'Week', month: 'Month', year: 'Year' };
 let range = 'month'; // remembered while the app is open
@@ -15,7 +15,9 @@ const monthYear = (d) => parseDate(d).toLocaleDateString('en-US', { month: 'shor
 export default async function trends(el) {
   const today = dateStr();
   const yearStart = (() => { const d = parseDate(today); d.setMonth(d.getMonth() - 11, 1); return dateStr(d); })();
-  const [targetList, entries, goal] = await Promise.all([getTargets(), entriesBetween(yearStart, today), kv('goal', null)]);
+  const [targetList, entries, goal, skippedList] = await Promise.all([getTargets(), entriesBetween(yearStart, today), kv('goal', null), kv('skipDays', [])]);
+  // Days you chose not to count in the deficit/surplus number (press and hold the number to choose). Remembered.
+  const skipped = new Set(skippedList);
 
   // Totals per day: { 'YYYY-MM-DD': {kcal,p,c,f} }
   const byDay = {};
@@ -62,8 +64,10 @@ export default async function trends(el) {
     const protein = days.filter((d) => byDay[d].p >= targetFor(d).p && targetFor(d).p > 0).length;
     const avgTarget = days.length ? days.reduce((a, d) => a + targetFor(d).kcal, 0) / days.length : targetFor(today).kcal;
     // Calorie balance vs target, per logged day: negative = under target (deficit), positive = over (surplus)
-    const net = days.reduce((a, d) => a + byDay[d].kcal - targetFor(d).kcal, 0);
-    return { days: days.length, tot, within, protein, avgTarget, from, net, avgNet: days.length ? net / days.length : 0 };
+    // (only the days you chose to count)
+    const counted = days.filter((d) => !skipped.has(d));
+    const net = counted.reduce((a, d) => a + byDay[d].kcal - targetFor(d).kcal, 0);
+    return { days: days.length, list: days, counted: counted.length, tot, within, protein, avgTarget, from, net, avgNet: counted.length ? net / counted.length : 0 };
   }
 
   // ----- Compact box: average deficit / surplus vs target (logged days only) + how many days you logged -----
@@ -71,15 +75,20 @@ export default async function trends(el) {
   const firstEntry = entries.reduce((a, e) => (e.date < a ? e.date : a), today);
   const started = targetList.length && targetList[0].from < firstEntry ? targetList[0].from : firstEntry;
   const daysBetween = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 86400000) + 1;
+  // Average kcal/day above or below target -> { text: '300', word: 'deficit', cls: 'good' | 'off' | '' }
+  function balanceOf(avgNet, counted) {
+    const avg = Math.round(avgNet);
+    if (!counted) return { num: '–', word: 'no days counted', cls: '' };
+    if (Math.abs(avg) < 25) return { num: '', word: 'on target', cls: goal ? 'good' : '' };
+    const kind = avg < 0 ? 'deficit' : 'surplus';
+    return { num: fmt(Math.abs(avg)), word: kind, cls: !goal ? '' : kind === goal ? 'good' : 'off' };
+  }
   function balanceBox(s) {
-    const avg = Math.round(s.avgNet);
-    const even = Math.abs(avg) < 25;
-    const kind = even ? null : avg < 0 ? 'deficit' : 'surplus';
-    const cls = !goal || !kind ? '' : kind === goal ? 'good' : 'off';
-    return `<div class="balance ${cls}">
-      <span class="big-num">${even ? '±0' : `${avg < 0 ? '−' : '+'}${fmt(Math.abs(avg))}`}</span>
-      <span class="small" style="font-weight:600">${kind ? `kcal / day ${kind}` : 'kcal / day · on target'}</span>
-    </div>`;
+    const b = balanceOf(s.avgNet, s.counted);
+    return `<div class="balance-wrap"><div class="balance ${b.cls}" data-o="balance" role="button" tabindex="0"
+        aria-label="Average ${b.num} kcal a day ${b.word}. Press and hold to choose which days count.">
+      ${b.num ? `<span class="big-num">${b.num}</span>` : ''}<span class="word">${b.word}</span>
+    </div>${s.counted < s.days ? `<span class="note" style="font-size:12px">${s.counted} of ${s.days} days counted</span>` : ''}</div>`;
   }
   // Fill rate: days logged out of days you could have logged in this period
   function fillRate(s) {
@@ -185,6 +194,67 @@ export default async function trends(el) {
     if (b.dataset.act === 'pick') render(Number(b.dataset.i));
     const body = el.querySelector('.body'); if (body) body.scrollTop = scroll;
   };
+
+  // ----- Press and hold the deficit/surplus number to choose which days count -----
+  let holdTimer = null, holdAt = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('[data-o="balance"]')) return;
+    holdAt = { x: e.clientX, y: e.clientY };
+    holdTimer = setTimeout(() => { holdTimer = null; chooseDays(); }, 450);
+  });
+  const stopHold = () => { clearTimeout(holdTimer); holdTimer = null; };
+  el.addEventListener('pointermove', (e) => { if (holdTimer && Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) > 10) stopHold(); });
+  el.addEventListener('pointerup', stopHold);
+  el.addEventListener('pointercancel', stopHold);
+  el.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-o="balance"]')) e.preventDefault(); });
+
+  function chooseDays() {
+    const s = stats();
+    const days = s.list.slice().sort().reverse(); // newest first
+    const picked = new Set(days.filter((d) => !skipped.has(d)));
+    const dayLine = (d) => {
+      const diff = Math.round(byDay[d].kcal - targetFor(d).kcal);
+      const label = parseDate(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return `<button class="tile row between day-pick ${picked.has(d) ? 'on' : ''}" data-act="day" data-d="${d}" aria-pressed="${picked.has(d)}" style="border:0;width:100%;text-align:left">
+        <span class="row gap10"><span class="tick" aria-hidden="true"></span><span style="font-size:14px;font-weight:500">${label}</span></span>
+        <span class="note">${fmt(byDay[d].kcal)} kcal · ${Math.abs(diff) < 25 ? 'on target' : `${fmt(Math.abs(diff))} ${diff < 0 ? 'under' : 'over'}`}</span></button>`;
+    };
+    const head = () => {
+      const counted = days.filter((d) => picked.has(d));
+      const net = counted.reduce((a, d) => a + byDay[d].kcal - targetFor(d).kcal, 0);
+      const b = balanceOf(counted.length ? net / counted.length : 0, counted.length);
+      return `<span class="h2">Days to count</span>
+        <span class="note" style="font-size:13px">${b.num ? `${b.num} ${b.word}` : b.word} · ${counted.length} of ${days.length} days</span>`;
+    };
+    const sheet = openSheet(`
+      <div style="padding:10px 24px 8px" class="stack gap10">
+        <div class="handle"></div>
+        <div class="row between"><div class="stack" data-o="dhead">${head()}</div>
+          <button class="link" data-act="all" style="font-size:13px">${picked.size === days.length ? 'Count none' : 'Count all'}</button></div>
+      </div>
+      <div class="sheet-scroll" style="gap:8px" data-o="dlist">${days.map(dayLine).join('')}
+        <span class="note center-text">Untick days you don't want in the average, like a sick day or a party. Only changes the deficit/surplus number.</span></div>
+      <div class="sheet-foot"><button class="btn primary" data-act="done" style="width:100%">Done</button></div>`, { tall: true });
+    // The finger is still down when this opens; don't let lifting it close the sheet via the backdrop
+    const scrim = document.querySelector('#sheet-root .scrim');
+    scrim.style.pointerEvents = 'none'; setTimeout(() => { scrim.style.pointerEvents = ''; }, 500);
+    const redraw = () => {
+      sheet.querySelector('[data-o="dhead"]').innerHTML = head();
+      sheet.querySelectorAll('[data-act="day"]').forEach((b) => { const on = picked.has(b.dataset.d); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+      sheet.querySelector('[data-act="all"]').textContent = picked.size === days.length ? 'Count none' : 'Count all';
+    };
+    sheet.onclick = async (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'day') { const d = b.dataset.d; if (picked.has(d)) picked.delete(d); else picked.add(d); redraw(); }
+      if (b.dataset.act === 'all') { const all = picked.size !== days.length; days.forEach((d) => (all ? picked.add(d) : picked.delete(d))); redraw(); }
+      if (b.dataset.act === 'done') {
+        days.forEach((d) => (picked.has(d) ? skipped.delete(d) : skipped.add(d)));
+        await setKV('skipDays', [...skipped].filter((d) => byDay[d])); // keep only days that still have entries
+        closeSheet(); render();
+      }
+    };
+  }
 
   render();
 }
