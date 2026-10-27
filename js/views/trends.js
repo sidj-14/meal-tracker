@@ -76,14 +76,15 @@ export default async function trends(el) {
     const even = Math.abs(avg) < 25;
     const kind = even ? null : avg < 0 ? 'deficit' : 'surplus';
     const cls = !goal || !kind ? '' : kind === goal ? 'good' : 'off';
-    const possible = Math.max(1, daysBetween(s.from > started ? s.from : started, today));
-    const rate = Math.round((s.days / possible) * 100);
     return `<div class="balance ${cls}">
-      <div class="stack"><span class="big-num">${even ? '±0' : `${avg < 0 ? '−' : '+'}${fmt(Math.abs(avg))}`}</span>
-        <span class="small" style="font-weight:600">${kind ? `kcal / day ${kind}` : 'kcal / day · on target'}</span></div>
-      <div class="stack" style="align-items:flex-end;text-align:right"><span style="font-weight:600;font-size:18px">${rate}%</span>
-        <span class="small muted">${s.days} of ${possible} days logged</span></div>
+      <span class="big-num">${even ? '±0' : `${avg < 0 ? '−' : '+'}${fmt(Math.abs(avg))}`}</span>
+      <span class="small" style="font-weight:600">${kind ? `kcal / day ${kind}` : 'kcal / day · on target'}</span>
     </div>`;
+  }
+  // Fill rate: days logged out of days you could have logged in this period
+  function fillRate(s) {
+    const possible = Math.max(1, daysBetween(s.from > started ? s.from : started, today));
+    return { possible, rate: Math.round((s.days / possible) * 100) };
   }
 
   function chart(buckets, selected) {
@@ -154,9 +155,10 @@ export default async function trends(el) {
           <div class="row between note">${labelIdx.map((i) => `<span>${buckets[i].label}</span>`).join('')}</div>
           <span class="note">${range === 'year' ? 'Bars = average per logged day each month' : 'Bars = calories per day'} · dashes = your target · tap a bar for details</span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
-          <div class="card" style="gap:4px;padding:16px;border-radius:20px"><span class="small muted">Days within target</span><span style="font-weight:600;font-size:22px">${s.within} / ${s.days}</span><span class="small muted">±10% of calories</span></div>
-          <div class="card" style="gap:4px;padding:16px;border-radius:20px"><span class="small muted">Protein goal hit</span><span style="font-weight:600;font-size:22px">${s.protein} day${s.protein === 1 ? '' : 's'}</span><span class="small muted">avg ${fmt(s.tot.p / s.days)} g / day</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+          <div class="card stat"><span class="small muted">Fill rate</span><span class="stat-num">${fillRate(s).rate}%</span><span class="small muted">${s.days} of ${fillRate(s).possible} days logged</span></div>
+          <div class="card stat"><span class="small muted">On target</span><span class="stat-num">${s.within} / ${s.days}</span><span class="small muted">days within ±10%</span></div>
+          <div class="card stat"><span class="small muted">Protein hit</span><span class="stat-num">${s.protein} day${s.protein === 1 ? '' : 's'}</span><span class="small muted">avg ${fmt(s.tot.p / s.days)} g a day</span></div>
         </div>
         <div class="card" style="gap:10px">
           <span class="title">Macro split</span>

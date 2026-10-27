@@ -196,9 +196,13 @@ h1, h2, h3 { margin: 0; }
 .goal-arrow { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
 .goal-opt.on .goal-arrow { background: var(--accent); color: #fff; }
 /* Trends: average deficit / surplus box */
-.balance { border-radius: 18px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #fff; box-shadow: 0 6px 18px rgba(43,46,44,.08); }
+.balance { border-radius: 18px; padding: 14px 18px; display: flex; align-items: baseline; gap: 10px; background: #fff; box-shadow: 0 6px 18px rgba(43,46,44,.08); }
 .balance.good { background: #E6EEE3; }           /* matches your goal: sage green */
 .balance.off { background: #F7E4E2; }            /* opposite of your goal: muted red */
 .balance .big-num { font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.1; }
 .balance.good .big-num, .balance.good .big-num + span { color: var(--accent-ink); }
 .balance.off .big-num, .balance.off .big-num + span { color: #B0504A; }
+
+/* Trends: small stat tiles (fill rate, on target, protein) */
+.card.stat { gap: 4px; padding: 14px 12px; border-radius: 18px; }
+.stat-num { font-weight: 600; font-size: 20px; }
