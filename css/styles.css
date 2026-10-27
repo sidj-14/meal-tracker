@@ -197,8 +197,8 @@ h1, h2, h3 { margin: 0; }
 .goal-opt.on .goal-arrow { background: var(--accent); color: #fff; }
 /* Trends: average deficit / surplus box */
 .balance { border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
-.balance.good { background: #E9EFE7; }
-.balance.off { background: #F5EAE4; }
+.balance.good { background: #E6EEE3; }           /* matches your goal: sage green */
+.balance.off { background: #F7E4E2; }            /* opposite of your goal: muted red */
 .balance .big-num { font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.1; }
-.balance.good .status { color: var(--accent-ink); }
-.balance.off .status { color: var(--over); }
+.balance.good .status, .balance.good .big-num { color: var(--accent-ink); }
+.balance.off .status, .balance.off .big-num { color: #B0504A; }
