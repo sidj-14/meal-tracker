@@ -4,7 +4,7 @@
 // Only "logged" days count toward averages: a day with no entries is treated as
 // "not tracked", not as "ate nothing", so a forgotten day doesn't drag your average down.
 
-import { getTargets, targetOn, entriesBetween } from '../store.js';
+import { getTargets, targetOn, entriesBetween, kv } from '../store.js';
 import { fmt, sum, dateStr, addDays, parseDate, shortDate, kcalFromMacros } from '../util.js';
 import { tabbar } from '../ui.js';
 
@@ -15,7 +15,7 @@ const monthYear = (d) => parseDate(d).toLocaleDateString('en-US', { month: 'shor
 export default async function trends(el) {
   const today = dateStr();
   const yearStart = (() => { const d = parseDate(today); d.setMonth(d.getMonth() - 11, 1); return dateStr(d); })();
-  const [targetList, entries] = await Promise.all([getTargets(), entriesBetween(yearStart, today)]);
+  const [targetList, entries, goal] = await Promise.all([getTargets(), entriesBetween(yearStart, today), kv('goal', null)]);
 
   // Totals per day: { 'YYYY-MM-DD': {kcal,p,c,f} }
   const byDay = {};
@@ -61,7 +61,29 @@ export default async function trends(el) {
     const within = days.filter((d) => { const t = targetFor(d).kcal; return t && Math.abs(byDay[d].kcal - t) <= t * 0.1; }).length;
     const protein = days.filter((d) => byDay[d].p >= targetFor(d).p && targetFor(d).p > 0).length;
     const avgTarget = days.length ? days.reduce((a, d) => a + targetFor(d).kcal, 0) / days.length : targetFor(today).kcal;
-    return { days: days.length, tot, within, protein, avgTarget, from };
+    // Calorie balance vs target, per logged day: negative = under target (deficit), positive = over (surplus)
+    const net = days.reduce((a, d) => a + byDay[d].kcal - targetFor(d).kcal, 0);
+    return { days: days.length, tot, within, protein, avgTarget, from, net, avgNet: days.length ? net / days.length : 0 };
+  }
+
+  // ----- Average deficit / surplus box: how far above or below target you ate, per logged day -----
+  function balanceBox(s) {
+    const avg = Math.round(s.avgNet);
+    const even = Math.abs(avg) < 25; // within 25 kcal/day counts as right on target
+    const kind = even ? 'even' : avg < 0 ? 'deficit' : 'surplus';
+    const label = even ? 'Avg daily balance' : kind === 'deficit' ? 'Avg daily deficit' : 'Avg daily surplus';
+    let status = '', cls = '';
+    if (!goal) status = '<a href="#/targets" style="color:inherit">Set your goal in Targets ›</a> to see if this is on track';
+    else if (even) status = 'Right on your target';
+    else if (kind === goal) { cls = 'good'; status = `On track for your ${goal} goal`; }
+    else { cls = 'off'; status = goal === 'deficit' ? 'Above target: no deficit on average' : 'Below target: no surplus on average'; }
+    const total = Math.round(s.net);
+    return `<div class="balance ${cls}">
+      <span class="small muted">${label} · vs your target</span>
+      <span class="big-num">${even ? '±0' : `${avg < 0 ? '−' : '+'}${fmt(Math.abs(avg))}`} <span class="muted" style="font-family:var(--sans);font-size:14px;font-weight:500">kcal / day</span></span>
+      <span class="small status" style="font-weight:600">${status}</span>
+      <span class="small muted">${total <= 0 ? '−' : '+'}${fmt(Math.abs(total))} kcal total · ${s.days} logged day${s.days === 1 ? '' : 's'} in the last ${range === 'week' ? '7 days' : range === 'month' ? '30 days' : '12 months'}</span>
+    </div>`;
   }
 
   function chart(buckets, selected) {
@@ -121,6 +143,7 @@ export default async function trends(el) {
           ${Object.entries(RANGES).map(([k, v]) => `<button class="${range === k ? 'on' : ''}" data-act="range" data-r="${k}" style="padding:8px 0">${v}</button>`).join('')}
         </div>
         ${s.days ? `
+        ${balanceBox(s)}
         <div class="card" style="gap:12px">
           <div class="row between baseline">
             <div class="stack"><span class="small muted">Avg daily calories</span><span class="h1" style="font-size:26px">${fmt(s.tot.kcal / s.days)}</span></div>

@@ -188,3 +188,17 @@ h1, h2, h3 { margin: 0; }
 .day-arrow:disabled { color: var(--line); }
 .day-title { position: relative; white-space: nowrap; }
 .day-title input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; }  /* invisible; tapping the title opens the date picker */
+
+/* Targets: goal question (two square tiles) */
+.goal-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.goal-opt { border: 1.5px solid var(--line); background: var(--bg); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; color: var(--ink); cursor: pointer; }
+.goal-opt.on { border-color: var(--accent); background: #E9EFE7; }
+.goal-arrow { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.goal-opt.on .goal-arrow { background: var(--accent); color: #fff; }
+/* Trends: average deficit / surplus box */
+.balance { border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.balance.good { background: #E9EFE7; }
+.balance.off { background: #F5EAE4; }
+.balance .big-num { font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.1; }
+.balance.good .status { color: var(--accent-ink); }
+.balance.off .status { color: var(--over); }

@@ -1,13 +1,14 @@
 // Targets — daily calories plus grams of protein, carbs and fat.
 // Saving creates a target that applies from today onward; past days keep their old targets.
 
-import { getTargets, targetOn, saveTarget, setKV } from '../store.js';
+import { getTargets, targetOn, saveTarget, setKV, kv } from '../store.js';
 import { esc, fmt, num, dateStr, addDays, shortDate, kcalFromMacros } from '../util.js';
 import { back, replace, toast } from '../ui.js';
 
 export default async function targets(el, params) {
   const setup = params.get('setup') === '1';
   const list = await getTargets();
+  let goal = await kv('goal', null); // 'deficit' | 'surplus' | null: what you're aiming for (used on Trends)
   const current = targetOn(list, dateStr()) || { kcal: 2000, p: 125, c: 225, f: 67 };
   const form = { kcal: String(current.kcal), p: String(current.p), c: String(current.c), f: String(current.f) };
 
@@ -24,6 +25,11 @@ export default async function targets(el, params) {
       ${setup ? '<p class="muted" style="margin:6px 0 0">You can change these any time.</p>' : ''}
     </header>
     <div class="body">
+      <div class="card" style="gap:12px">
+        <span class="title">What's your goal with calorie tracking?</span>
+        <div class="goal-toggle" data-o="goal"></div>
+        <span class="note">Trends uses this to tell you if your average is on track.</span>
+      </div>
       <div class="card">
         <div class="row between baseline"><span class="title">Daily targets</span><span class="note">from ${shortDate(dateStr())}</span></div>
         ${field('kcal', 'Calories', 'kcal')}
@@ -51,6 +57,11 @@ export default async function targets(el, params) {
   </div>`;
 
   const $ = (k) => el.querySelector(`[data-o="${k}"]`);
+  function renderGoal() {
+    const opt = (v, arrow, title, sub) => `<button class="goal-opt ${goal === v ? 'on' : ''}" data-act="goal" data-v="${v}" aria-pressed="${goal === v}">
+      <span class="goal-arrow" aria-hidden="true">${arrow}</span><span style="font-weight:600;font-size:15px">${title}</span><span class="small muted">${sub}</span></button>`;
+    $('goal').innerHTML = opt('deficit', '↓', 'Deficit', 'Eat less, to lose weight') + opt('surplus', '↑', 'Surplus', 'Eat more, to gain weight');
+  }
   function update() {
     const k = num(form.kcal), p = num(form.p), c = num(form.c), f = num(form.f);
     const fromMacros = Math.round(kcalFromMacros(p, c, f));
@@ -75,6 +86,11 @@ export default async function targets(el, params) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     if (b.dataset.act === 'back') back();
+    if (b.dataset.act === 'goal') {
+      goal = goal === b.dataset.v ? null : b.dataset.v; // tap again to clear
+      await setKV('goal', goal); // saved right away
+      renderGoal();
+    }
     if (b.dataset.act === 'match') {
       form.kcal = b.dataset.v;
       el.querySelector('[data-k="kcal"]').value = form.kcal;
@@ -89,5 +105,6 @@ export default async function targets(el, params) {
     }
   };
 
+  renderGoal();
   update();
 }
