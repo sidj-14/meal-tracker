@@ -4,7 +4,7 @@
 // Strategy: "network first". When online, always fetch the latest files (so updates
 // you push to GitHub show up right away) and keep a copy. When offline, use the copy.
 
-const CACHE = 'meal-tracker-v20'; // change this name with each release
+const CACHE = 'meal-tracker-v21'; // change this name with each release
 const APP_SHELL = [
   './', './index.html', './css/styles.css', './manifest.webmanifest',
   './js/app.js', './js/db.js', './js/store.js', './js/ui.js', './js/util.js',

@@ -66,23 +66,23 @@ export default async function trends(el) {
     return { days: days.length, tot, within, protein, avgTarget, from, net, avgNet: days.length ? net / days.length : 0 };
   }
 
-  // ----- Average deficit / surplus box: how far above or below target you ate, per logged day -----
+  // ----- Compact box: average deficit / surplus vs target (logged days only) + how many days you logged -----
+  // "Could have logged" counts from when you started (first target or first entry) up to today.
+  const firstEntry = entries.reduce((a, e) => (e.date < a ? e.date : a), today);
+  const started = targetList.length && targetList[0].from < firstEntry ? targetList[0].from : firstEntry;
+  const daysBetween = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 86400000) + 1;
   function balanceBox(s) {
     const avg = Math.round(s.avgNet);
-    const even = Math.abs(avg) < 25; // within 25 kcal/day counts as right on target
-    const kind = even ? 'even' : avg < 0 ? 'deficit' : 'surplus';
-    const label = even ? 'Avg daily balance' : kind === 'deficit' ? 'Avg daily deficit' : 'Avg daily surplus';
-    let status = '', cls = '';
-    if (!goal) status = '<a href="#/targets" style="color:inherit">Set your goal in Targets ›</a> to see if this is on track';
-    else if (even) status = 'Right on your target';
-    else if (kind === goal) { cls = 'good'; status = `On track for your ${goal} goal`; }
-    else { cls = 'off'; status = goal === 'deficit' ? 'Above target: no deficit on average' : 'Below target: no surplus on average'; }
-    const total = Math.round(s.net);
+    const even = Math.abs(avg) < 25;
+    const kind = even ? null : avg < 0 ? 'deficit' : 'surplus';
+    const cls = !goal || !kind ? '' : kind === goal ? 'good' : 'off';
+    const possible = Math.max(1, daysBetween(s.from > started ? s.from : started, today));
+    const rate = Math.round((s.days / possible) * 100);
     return `<div class="balance ${cls}">
-      <span class="small muted">${label} · vs your target</span>
-      <span class="big-num">${even ? '±0' : `${avg < 0 ? '−' : '+'}${fmt(Math.abs(avg))}`} <span class="muted" style="font-family:var(--sans);font-size:14px;font-weight:500">kcal / day</span></span>
-      <span class="small status" style="font-weight:600">${status}</span>
-      <span class="small muted">${total <= 0 ? '−' : '+'}${fmt(Math.abs(total))} kcal total · ${s.days} logged day${s.days === 1 ? '' : 's'} in the last ${range === 'week' ? '7 days' : range === 'month' ? '30 days' : '12 months'}</span>
+      <div class="stack"><span class="big-num">${even ? '±0' : `${avg < 0 ? '−' : '+'}${fmt(Math.abs(avg))}`}</span>
+        <span class="small" style="font-weight:600">${kind ? `kcal / day ${kind}` : 'kcal / day · on target'}</span></div>
+      <div class="stack" style="align-items:flex-end;text-align:right"><span style="font-weight:600;font-size:18px">${rate}%</span>
+        <span class="small muted">${s.days} of ${possible} days logged</span></div>
     </div>`;
   }
 
@@ -131,7 +131,7 @@ export default async function trends(el) {
     const tK = kcalFromMacros(current.p, current.c, current.f) || 1;
     const target = { p: Math.round(current.p * 4 / tK * 100), c: Math.round(current.c * 4 / tK * 100) }; target.f = Math.max(0, 100 - target.p - target.c);
     const splitBar = (v) => `<div class="split" style="height:14px"><div style="width:${v.p}%;background:var(--p)"></div><div style="width:${v.c}%;background:var(--c)"></div><div style="width:${v.f}%;background:var(--f)"></div></div>`;
-    const changed = targetList.some((t) => t.from > s.from && t.from <= today);
+    const changed = targetList.some((t, i) => i > 0 && t.from > s.from && t.from <= today); // the first target isn't a change
 
     el.innerHTML = `<div class="screen">
       <header class="head stack gap6">
