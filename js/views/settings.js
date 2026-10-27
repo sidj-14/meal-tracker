@@ -11,6 +11,15 @@ export default async function settings(el) {
   const usdaKey = await kv('usdaKey', '');
   // Profile picture: { type: 'emoji', value: '🥑' } or { type: 'photo', value: 'data:image/jpeg;base64,...' } or null
   let avatar = await kv('avatar', null);
+  // Weight is stored in pounds (profile.lb); you can view and type it in kg instead.
+  let wUnit = profile.weightUnit || 'lb';
+  const LB_PER_KG = 2.20462;
+  const round1 = (x) => Math.round(x * 10) / 10;
+  function shownWeight() {
+    const lb = parseFloat(profile.lb);
+    if (!Number.isFinite(lb)) return profile.lb || '';
+    return String(wUnit === 'kg' ? round1(lb / LB_PER_KG) : round1(lb));
+  }
 
   const input = (key, label, unit, width = 72, mode = 'numeric') => `
     <label class="form-row"><span>${label}</span>
@@ -32,7 +41,9 @@ export default async function settings(el) {
         <div class="form-row"><span>Height</span>
           <span class="row gap6"><input class="num-in sm" data-k="ft" inputmode="numeric" value="${esc(profile.ft)}" aria-label="Height, feet"><span class="unit" style="width:auto">ft</span>
           <input class="num-in sm" data-k="inch" inputmode="numeric" value="${esc(profile.inch)}" aria-label="Height, inches"><span class="unit" style="width:22px">in</span></span></div>
-        ${input('lb', 'Weight', 'lb', 72, 'decimal')}
+        <div class="form-row"><span>Weight</span>
+          <span class="row gap6"><input class="num-in" style="width:72px" data-o="weight" inputmode="decimal" value="${esc(shownWeight())}" aria-label="Weight in ${wUnit}">
+          <div class="seg" style="padding:2px"><button class="${wUnit === 'lb' ? 'on' : ''}" data-act="wunit" data-v="lb" style="padding:5px 10px">lb</button><button class="${wUnit === 'kg' ? 'on' : ''}" data-act="wunit" data-v="kg" style="padding:5px 10px">kg</button></div></span></div>
       </div>
 
       <div class="card tight">
@@ -53,7 +64,7 @@ export default async function settings(el) {
         <label class="setting-row" style="cursor:pointer"><span>Restore from a backup</span><span class="val">Import ›</span>
           <input type="file" accept="application/json,.json" data-act="import" hidden></label>
       </div>
-      <span class="note center-text">Meal Tracker · version 2.14</span>
+      <span class="note center-text">Meal Tracker · version 2.15</span>
     </div>
     ${tabbar('settings')}
   </div>`;
@@ -74,6 +85,11 @@ export default async function settings(el) {
   el.querySelector('[data-key="usda"]').addEventListener('change', async (e) => { await setKV('usdaKey', e.target.value.trim()); toast('Key saved'); });
 
   // Profile fields save as you type.
+  el.querySelector('[data-o="weight"]').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    profile.lb = Number.isFinite(v) ? String(wUnit === 'kg' ? round1(v * LB_PER_KG) : v) : e.target.value;
+    setProfile(profile);
+  });
   el.querySelectorAll('[data-k]').forEach((inp) => {
     inp.addEventListener('input', () => { profile[inp.dataset.k] = inp.value; showName(); setProfile(profile); });
   });
@@ -83,6 +99,11 @@ export default async function settings(el) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'ws') { await setKV('weekStart', b.dataset.v); settings(el); }
+    if (act === 'wunit') {
+      wUnit = b.dataset.v; profile.weightUnit = wUnit; await setProfile(profile);
+      el.querySelector('[data-o="weight"]').value = shownWeight();
+      el.querySelectorAll('[data-act="wunit"]').forEach((x) => x.classList.toggle('on', x.dataset.v === wUnit));
+    }
     if (act === 'groups') manageGroups();
     if (act === 'avatar') pickAvatar();
     if (act === 'export') exportBackup();
