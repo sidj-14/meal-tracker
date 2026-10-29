@@ -25,7 +25,7 @@ A small, private calorie and macro tracker for iPhone. It shows what's **left** 
 - **Barcodes → [Open Food Facts](https://world.openfoodfacts.org)**, a free crowd-sourced database of packaged foods. No key needed. If a product isn't there, you enter its label once and the barcode is saved with your food.
 - **Search → [USDA FoodData Central](https://fdc.nal.usda.gov)**, generic foods like "bananas, raw". A free api.data.gov key is built into `js/food-api.js` (shared by everyone, about 1,000 searches an hour). Anyone can paste their own free key from [api.data.gov/signup](https://api.data.gov/signup/) in Settings to use theirs instead.
 - **Label photos** are read on the phone with [Tesseract.js](https://github.com/naptha/tesseract.js) (Apache-2.0), saved in `vendor/tesseract`. The first use downloads about 7 MB; after that it works offline. `js/label-parser.js` turns the recognized text into numbers.
-- Barcodes are read from a photo taken with the phone camera (no camera-permission prompt) using [ZXing](https://github.com/zxing-js/browser) (MIT license), saved in `vendor/`.
+- The barcode button offers **Take a photo**, **Choose from Photos** or **Type the barcode number**. Barcodes are read from the photo (no camera-permission prompt) using [ZXing](https://github.com/zxing-js/browser) (MIT license), saved in `vendor/`.
 
 ## How the code is organized
 

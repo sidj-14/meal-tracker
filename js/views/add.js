@@ -5,7 +5,7 @@ import { allFoods, getFood, getTargets, targetOn, entriesOn, entriesBetween, add
 import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, openSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
-import { scanFromPhoto } from '../scanner.js';
+import { barcodeMenu } from '../scanner.js';
 
 export default async function add(el, params) {
   const today = dateStr();
@@ -30,8 +30,7 @@ export default async function add(el, params) {
     <div class="stack gap14" style="padding:14px 24px 0">
       <div class="row gap8">
         <form class="search" data-o="form" role="search">${ICON.search}<input type="search" enterkeyhint="search" placeholder="Search foods" aria-label="Search foods" data-o="q" autocomplete="off"><button type="button" class="clear-q" data-act="clearq" aria-label="Clear search" hidden>${ICON.close}</button></form>
-        <label class="iconbtn" aria-label="Scan barcode" style="cursor:pointer">${ICON.barcode}
-          <input type="file" accept="image/*" capture="environment" hidden data-o="scan"></label>
+        <button class="iconbtn" data-act="barcode" aria-label="Add by barcode" style="cursor:pointer;border:0">${ICON.barcode}</button>
       </div>
       <div class="chips" data-o="tabs"></div>
     </div>
@@ -203,12 +202,6 @@ export default async function add(el, params) {
   // The ✕ in the search box shows only when there's text to clear
   const showClear = () => { el.querySelector('[data-act="clearq"]').hidden = !query; };
   $('q').addEventListener('input', (e) => { query = e.target.value; showClear(); if (online.query !== query.trim()) online = { query: '', loading: false, results: null, error: '' }; render(); });
-  // Barcode: the phone's own camera takes a photo (no permission prompt), then we read the code from it.
-  $('scan').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (file) scanFromPhoto(file, handleBarcode);
-  });
   $('form').addEventListener('submit', (e) => { e.preventDefault(); $('q').blur(); runSearch(); });
 
   el.onclick = async (e) => {
@@ -217,6 +210,8 @@ export default async function add(el, params) {
     const act = b.dataset.act;
     if (act === 'cancel') back();
     if (act === 'searchOnline') runSearch();
+    // Barcode: choose take a photo / pick from Photos / type the number (photos need no camera permission)
+    if (act === 'barcode') barcodeMenu(handleBarcode);
     if (act === 'tab') { tab = b.dataset.tab; query = ''; $('q').value = ''; showClear(); render(); }
     if (act === 'clearq') {
       query = ''; $('q').value = ''; showClear();

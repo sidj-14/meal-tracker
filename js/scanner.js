@@ -8,7 +8,7 @@
 // time you scan.
 
 import { esc, ICON } from './util.js';
-import { closeSheet } from './ui.js';
+import { closeSheet, openSheet } from './ui.js';
 
 let libPromise;
 function loadLibrary() {
@@ -115,4 +115,48 @@ export async function scanFromPhoto(file, onCode) {
   }
 
   tryDecode(file);
+}
+
+// The menu behind the barcode button: take a photo, pick one from Photos (e.g. a screenshot), or type the number.
+// onCode(code, setStatus) runs once a barcode is found or typed.
+export function barcodeMenu(onCode) {
+  const camera = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+  const photos = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>';
+  const keys = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/></svg>';
+  const sheet = openSheet(`<div class="sheet-pad">
+    <div class="handle"></div>
+    <div class="row between"><span class="h2">Barcode</span><button class="close" data-act="close" aria-label="Close">${ICON.close}</button></div>
+    <div class="stack gap8">
+      <label class="tile menu-opt">${camera}<span class="grow"><b>Take a photo</b><span class="note">Point at the barcode and snap</span></span><span class="muted">›</span>
+        <input type="file" accept="image/*" capture="environment" hidden data-o="cam"></label>
+      <label class="tile menu-opt">${photos}<span class="grow"><b>Choose from Photos</b><span class="note">A photo or screenshot of a barcode</span></span><span class="muted">›</span>
+        <input type="file" accept="image/*" hidden data-o="lib"></label>
+      <button class="tile menu-opt" data-act="type">${keys}<span class="grow"><b>Type the barcode number</b><span class="note">The digits under the bars</span></span><span class="muted">›</span></button>
+    </div>
+    <form class="stack gap8" data-o="manual" hidden>
+      <div class="row gap8">
+        <input class="field" inputmode="numeric" pattern="[0-9]*" placeholder="e.g. 012345678905" aria-label="Barcode number" maxlength="14">
+        <button class="btn dark sm" type="submit">Look up</button>
+      </div>
+      <span class="note" data-o="status"></span>
+    </form>
+  </div>`);
+  const pick = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) scanFromPhoto(f, onCode); };
+  sheet.querySelector('[data-o="cam"]').onchange = pick;
+  sheet.querySelector('[data-o="lib"]').onchange = pick;
+  const form = sheet.querySelector('[data-o="manual"]');
+  const setStatus = (msg) => { sheet.querySelector('[data-o="status"]').textContent = msg; };
+  sheet.onclick = (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'close') closeSheet();
+    if (b.dataset.act === 'type') { form.hidden = false; form.querySelector('input').focus(); }
+  };
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const code = form.querySelector('input').value.replace(/\D/g, '');
+    if (code.length < 6) { setStatus('Barcodes are usually 8–13 digits.'); return; }
+    setStatus(`Looking up ${code}…`);
+    onCode(code, setStatus);
+  };
 }
