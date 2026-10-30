@@ -12,9 +12,12 @@ export default async function create(el, params) {
   const editing = params.get('edit') ? await getFood(params.get('edit')) : null;
   // basis: 'g100' (per 100 g, the default) or 'serving' (per serving, as US labels print it)
   const counted = editing?.baseUnit === 'pc'; // a "pieces" food with no weight: show it per serving
-  const toServing = counted ? (editing.servingG || 1) / 100 : 1; // per 100 pieces -> per serving
+  // '?basis=serving' (from "Edit calories & macros" after a scan) shows values per serving, like the label
+  const asServing = counted || (params.get('basis') === 'serving' && !!editing?.servingG);
+  const toServing = asServing ? (editing.servingG || 1) / 100 : 1; // per 100 -> per serving
+  const reopen = params.get('then') === 'pick'; // after saving, go back and open this food's amount sheet again
   const s = editing
-    ? { name: editing.name, brand: editing.brand || '', basis: counted ? 'serving' : 'g100',
+    ? { name: editing.name, brand: editing.brand || '', basis: asServing ? 'serving' : 'g100',
         servingQty: editing.servingG ? String(r1(editing.servingQty || editing.servingG)) : '',
         servingUnit: editing.servingUnit || editing.baseUnit || 'g',
         // a weight is kept for pieces ("2 cookies (28 g)") and spoons ("2 tbsp (32 g)")
@@ -212,7 +215,8 @@ export default async function create(el, params) {
         gPerMl: gPerMl(),
       });
       toast(editing ? 'Food updated' : 'Food saved');
-      if (editing) back('#/add?tab=mine');
+      if (editing && reopen) { sessionStorage.setItem('pickFood', food.id); back('#/add'); }
+      else if (editing) back('#/add?tab=mine');
       else { sessionStorage.setItem('pickFood', food.id); back('#/add'); } // add screen opens it
     }
   };

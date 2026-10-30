@@ -102,7 +102,7 @@ export function toast(msg) {
 // mode 'add'  -> onSubmit(grams, group, unit) adds a new entry
 // mode 'edit' -> onSubmit saves changes, onDelete removes the entry
 export async function amountSheet(opts) {
-  const { food, grams, group = null, mode = 'add', remaining, note = '', dayLabel = 'today', onSubmit, onDelete } = opts;
+  const { food, grams, group = null, mode = 'add', remaining, note = '', dayLabel = 'today', onSubmit, onDelete, onEditFood } = opts;
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
   // You can enter the amount in pieces, servings or g/ml (whichever apply to this food).
@@ -126,7 +126,7 @@ export async function amountSheet(opts) {
       <span class="h3">${esc(food.name)}</span>
       <span class="big"><span data-o="kcal"></span> <small>kcal</small></span>
     </div>
-    ${note ? `<span class="note" style="margin-top:-8px">${esc(note)}</span>` : ''}
+    ${note || onEditFood ? `<div class="row gap8 wrap" style="margin-top:-8px">${note ? `<span class="note">${esc(note)}</span>` : ''}${onEditFood ? '<button class="link" data-act="editFood" style="font-size:13px;padding:0;color:var(--accent-ink);font-weight:600">Edit calories & macros ›</button>' : ''}</div>` : ''}
     <div class="stack gap6">
       <div class="row gap10 wrap">
         <span class="muted">Amount</span>
@@ -257,6 +257,8 @@ export async function amountSheet(opts) {
       if (state.grams <= 0) { toast('Enter an amount'); return; }
       b.disabled = true;
       await onSubmit(state.grams, state.group, state.unit, food); // food may now include pieces
+    } else if (act === 'editFood') {
+      onEditFood(food);
     } else if (act === 'savepieces') {
       const n = num($('pcs').value);
       if (!n) { toast(hasServing ? 'How many pieces in one serving?' : 'How much does one piece weigh?'); return; }

@@ -1,7 +1,7 @@
 // Add food — re-add something you logged before (Recent, by day), pick from My foods, search the USDA database, scan a barcode, or create a food. Choosing a food opens
 // the amount sheet, which adds the entry to today (and saves the food to My foods for next time).
 
-import { allFoods, getFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry, getGroups, BUILTIN_GROUPS } from '../store.js';
+import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry, getGroups, BUILTIN_GROUPS } from '../store.js';
 import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, openSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
@@ -153,6 +153,12 @@ export default async function add(el, params) {
       food: f, grams: preset.grams || f.lastGrams || f.servingG || null, group: preset.group || null,
       mode: 'add', note: saved ? '' : note, dayLabel,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
+      // Label a bit different from the database? Fix the numbers, then come back here to add it.
+      onEditFood: async (cur) => {
+        const savedNow = await saveFood({ ...cur }); // keep it in My foods so the fix sticks (and next scan finds it)
+        closeSheet();
+        go(`#/create?edit=${encodeURIComponent(savedNow.id)}&basis=serving&then=pick`);
+      },
       onSubmit: async (grams, group, unit, food) => {
         await addEntry({ ...food, lastUnit: unit }, grams, group, day); // also saves the food to My foods
         toast(`Added ${f.name}`);
