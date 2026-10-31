@@ -73,6 +73,8 @@ export async function updateEntry(entry, grams, group, unit, food = {}) {
   await db.put('entries', { ...entry, ...serving, grams, group: group || null, unit: unit || entry.unit || null, ...scale(entry.per100, grams) });
 }
 export const deleteEntry = (id) => db.del('entries', id);
+// Put back an entry exactly as it was (for Undo after a delete)
+export const restoreEntry = (entry) => db.put('entries', entry);
 
 // ---------- backup ----------
 export async function exportAll() {

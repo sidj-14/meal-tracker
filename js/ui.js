@@ -40,12 +40,12 @@ export function openSheet(html, { tall = false } = {}) {
 // Swipe down to close, like iPhone sheets. A drag starts from the handle/header,
 // or from the list when it's already scrolled to the top (so scrolling still works).
 function enableSwipeDown(sheet, scrim) {
-  let startY = 0, startT = 0, dy = 0, dragging = false, scroller = null, active = false;
+  let startY = 0, startX = 0, startT = 0, dy = 0, dragging = false, scroller = null, active = false;
 
   sheet.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1 || e.target.closest('input, select, textarea')) { active = false; return; }
     active = true; dragging = false; dy = 0;
-    startY = e.touches[0].clientY; startT = Date.now();
+    startY = e.touches[0].clientY; startX = e.touches[0].clientX; startT = Date.now();
     scroller = e.target.closest('.sheet-scroll, .sheet-pad');
   }, { passive: true });
 
@@ -53,6 +53,8 @@ function enableSwipeDown(sheet, scrim) {
     if (!active) return;
     dy = e.touches[0].clientY - startY;
     if (!dragging) {
+      // sideways = someone swiping a row (e.g. swipe to delete), not pulling the sheet down
+      if (Math.abs(e.touches[0].clientX - startX) > Math.abs(dy) && Math.abs(dy) > 2) { active = false; return; }
       const atTop = !scroller || scroller.scrollTop <= 0;
       if (dy > 6 && atTop) dragging = true;          // pulling down at the top → drag the sheet
       else if (Math.abs(dy) > 6) { active = false; return; } // otherwise it's a normal scroll
@@ -89,12 +91,76 @@ export function closeSheet() {
 
 // ---------- toast ----------
 let toastTimer;
-export function toast(msg) {
+// toast('Saved') or toast('Deleted', { action: 'Undo', onAction }) — the action stays tappable for 4 seconds
+export function toast(msg, { action, onAction } = {}) {
   const el = document.getElementById('toast');
   el.textContent = msg;
+  el.classList.toggle('has-action', !!action);
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-action'; b.textContent = action;
+    b.onclick = () => { el.classList.remove('show'); onAction(); };
+    el.append(b);
+  }
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 4000 : 2200);
+}
+
+// ---------- swipe left to delete ----------
+// Wraps each row matching `selector` inside `container` so it can slide left to show a red Delete button.
+// onDelete(row) runs when Delete is tapped. A plain tap on a row still works as before.
+export function enableSwipeDelete(container, selector, onDelete, label = 'Delete') {
+  const W = 88; // width of the Delete button
+  let open = null; // the row currently slid open
+  const close = (row) => {
+    if (!row) return;
+    row.style.transition = 'transform .2s'; row.style.transform = '';
+    setTimeout(() => { if (!row.style.transform) row.parentElement?.classList.remove('moving'); }, 200);
+    if (open === row) open = null;
+  };
+  container.querySelectorAll(selector).forEach((row) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'swipe';
+    wrap.style.borderRadius = getComputedStyle(row).borderRadius; // same rounded corners as the row
+    row.replaceWith(wrap);
+    const del = document.createElement('button');
+    del.className = 'swipe-del'; del.textContent = typeof label === 'function' ? label(row) : label;
+    del.onclick = (e) => { e.stopPropagation(); onDelete(row); };
+    wrap.append(del, row);
+    row.classList.add('swipe-row');
+
+    let x0 = 0, y0 = 0, dx = 0, base = 0, mode = null; // mode: null (undecided) | 'swipe' | 'scroll'
+    row.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      if (open && open !== row) close(open);
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; mode = null;
+      base = open === row ? -W : 0;
+      row.style.transition = 'none';
+    }, { passive: true });
+    row.addEventListener('touchmove', (e) => {
+      const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+      if (!mode) { if (Math.abs(mx) < 8 && Math.abs(my) < 8) return; mode = Math.abs(mx) > Math.abs(my) ? 'swipe' : 'scroll'; }
+      if (mode !== 'swipe') return;
+      e.preventDefault(); // sideways: move the row, don't scroll
+      wrap.classList.add('moving');
+      dx = mx;
+      const x = Math.min(0, Math.max(-W * 1.4, base + dx));
+      row.style.transform = `translateX(${x}px)`;
+    }, { passive: false });
+    row.addEventListener('touchend', () => {
+      if (mode !== 'swipe') return;
+      row.style.transition = 'transform .2s';
+      if (base + dx < -W / 2) { row.style.transform = `translateX(${-W}px)`; open = row; }
+      else close(row);
+      row.dataset.swiped = '1'; // the tap that ends a swipe shouldn't also open the row
+      setTimeout(() => { delete row.dataset.swiped; }, 350);
+    });
+    // While a row is open (or just swiped), a tap closes it instead of opening the entry
+    row.addEventListener('click', (e) => {
+      if (row.dataset.swiped || open === row) { e.stopPropagation(); e.preventDefault(); close(row); }
+    }, true);
+  });
 }
 
 // ---------- amount sheet ----------

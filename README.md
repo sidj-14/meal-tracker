@@ -12,7 +12,7 @@ A small, private calorie and macro tracker for iPhone. It shows what's **left** 
 |---|---|
 | Welcome | First launch only |
 | Targets | Your goal (calorie **deficit** or **surplus**), daily calories + grams of protein/carbs/fat. Checks that macros add up to your calories. Changes apply from today onward; history is kept. |
-| Today | Calories left (ring), macros left (bars), the day's entries. Tap an entry to change its amount or group, or delete it. **‹ ›** switch days and tapping the date opens a calendar: any past day can be viewed, added to and edited. |
+| Today | Calories left (ring), macros left (bars), the day's entries. Tap an entry to change its amount or group, or delete it. **Swipe left** on an entry (or a whole meal card) to delete it, with **Undo**. **‹ ›** switch days and tapping the date opens a calendar: any past day can be viewed, added to and edited. |
 | Week | Week budget left (Monday start, changeable), per-day bars against each day's target, average macros. |
 | Add food | **Recent** shows what you logged on previous days, by day and group: tap to add again (same amount and group, both changeable) or **Add all** for a whole meal. **Press and hold** an item to select several (from any days), then **Add** them together, keeping their groups or putting them all in one. Also My foods, search your foods and the USDA database, scan a barcode (Open Food Facts), amount in grams with live macros, optional group (Breakfast, Lunch, Dinner or your own). Foods you log from search or scans are saved to My foods. |
 | Create food | Enter a food from its label, per 100 g or per serving, or **fill it from a photo of the label** (OCR on the phone). Stored per 100 g. Edit or delete later from *My foods*. |

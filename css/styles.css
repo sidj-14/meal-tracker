@@ -226,3 +226,13 @@ h1, h2, h3 { margin: 0; }
 .menu-opt { display: flex; align-items: center; gap: 14px; border: 0; width: 100%; text-align: left; cursor: pointer; padding: 14px 16px; color: var(--ink); }
 .menu-opt b { display: block; font-size: 15px; font-weight: 600; }
 .menu-opt svg { color: var(--accent-ink); flex-shrink: 0; }
+
+/* Toast with an Undo button */
+#toast.has-action { pointer-events: auto; display: flex; align-items: center; gap: 14px; padding: 6px 6px 6px 16px; }
+.toast-action { border: 0; background: rgba(255,255,255,.16); color: #fff; font-weight: 600; font-size: 14px; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+/* Swipe left to delete */
+.swipe { position: relative; overflow: hidden; border-radius: 18px; flex-shrink: 0; }
+/* hidden until the row moves, so no red shows at the rounded corners of resting rows */
+.swipe-del { position: absolute; top: 0; right: 0; bottom: 0; width: 120px; padding-left: 32px; border: 0; background: #C9615A; color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; opacity: 0; }
+.swipe.moving .swipe-del { opacity: 1; }
+.swipe-row { position: relative; touch-action: pan-y; will-change: transform; }

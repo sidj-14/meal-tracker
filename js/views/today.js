@@ -1,9 +1,9 @@
 // Today — calories left, macros left, and the day's entries.
 // '#/today?d=YYYY-MM-DD' shows an earlier day: same screen, fully editable, + adds to that day.
 
-import { getTargets, targetOn, entriesOn, updateEntry, deleteEntry } from '../store.js';
+import { getTargets, targetOn, entriesOn, updateEntry, deleteEntry, restoreEntry } from '../store.js';
 import { esc, fmt, r1, sum, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
-import { tabbar, openSheet, closeSheet, amountSheet, toast, replace } from '../ui.js';
+import { tabbar, openSheet, closeSheet, amountSheet, toast, replace, enableSwipeDelete } from '../ui.js';
 
 const RING = 2 * Math.PI * 56; // circumference of the calorie ring
 
@@ -84,13 +84,27 @@ export default async function today(el, params = new URLSearchParams()) {
           ${cards.length ? cards.map((card) => {
             const k = sum(card.items).kcal;
             const sub = card.single ? `${amountText(card.items[0].grams, card.items[0])} · P ${r1(card.items[0].p)} · C ${r1(card.items[0].c)} · F ${r1(card.items[0].f)}` : card.items.map((i) => i.name).join(', ');
-            return `<button class="list-item" data-act="all"><span class="grow"><span class="name">${esc(card.name)}</span><span class="sub">${esc(sub)}</span></span><span class="kcal">${fmt(k)}</span></button>`;
+            return `<button class="list-item" data-act="all" data-ids="${card.items.map((i) => i.id).join(',')}" data-name="${esc(card.name)}"><span class="grow"><span class="name">${esc(card.name)}</span><span class="sub">${esc(sub)}</span></span><span class="kcal">${fmt(k)}</span></button>`;
           }).join('') : `<div class="empty">${isToday ? 'Nothing logged yet today.' : 'Nothing logged on this day.'}<br>Tap + below to add food.</div>`}
         </div>
       </div>
     </div>
     ${tabbar('today', date)}
   </div>`;
+
+  // ----- Swipe left to delete (with Undo) -----
+  // Deletes the given entries, then offers Undo for a few seconds.
+  async function removeEntries(list, label) {
+    for (const e of list) await deleteEntry(e.id);
+    today(el, params);
+    toast(`Deleted ${label}`, { action: 'Undo', onAction: async () => { for (const e of list) await restoreEntry(e); closeSheet(); today(el, params); } });
+  }
+  // On the main list: a single item deletes that entry; a meal card (e.g. Lunch) deletes the whole meal
+  enableSwipeDelete(el.querySelector('.entries'), '.list-item', (row) => {
+    const ids = row.dataset.ids.split(',');
+    const list = entries.filter((x) => ids.includes(x.id));
+    removeEntries(list, list.length === 1 ? list[0].name : `${row.dataset.name} (${list.length} items)`);
+  }, (row) => (row.dataset.ids.includes(',') ? 'Delete all' : 'Delete'));
 
   el.querySelector('[data-o="pick"]').addEventListener('change', (e) => { if (e.target.value) goDay(pickDay(e.target.value)); });
 
@@ -101,6 +115,8 @@ export default async function today(el, params = new URLSearchParams()) {
     if (b && b.dataset.act === 'today') return goDay(dateStr());
     if (b && b.dataset.act === 'all') openAll();
   };
+
+  const summary = (list) => { const t = sum(list); return `${list.length} item${list.length === 1 ? '' : 's'} · ${fmt(t.kcal)} kcal · P ${fmt(t.p)} · C ${fmt(t.c)} · F ${fmt(t.f)}`; };
 
   // ----- "Today's entries" sheet: everything, grouped, tap an item to edit it -----
   function openAll() {
@@ -115,7 +131,7 @@ export default async function today(el, params = new URLSearchParams()) {
         <div class="handle"></div>
         <div class="row between">
           <div class="stack"><span class="h2">${isToday ? "Today's entries" : `${dayName(date)}: entries`}</span>
-            <span class="note" style="font-size:13px">${entries.length} item${entries.length === 1 ? '' : 's'} · ${fmt(eaten.kcal)} kcal · P ${fmt(eaten.p)} · C ${fmt(eaten.c)} · F ${fmt(eaten.f)}</span></div>
+            <span class="note" style="font-size:13px" data-o="allNote">${summary(entries)}</span></div>
           <button class="close" data-act="close" aria-label="Close">${ICON.close}</button>
         </div>
       </div>
@@ -126,9 +142,20 @@ export default async function today(el, params = new URLSearchParams()) {
             <span class="stack gap6"><span style="font-weight:500;font-size:14px">${esc(i.name)}</span><span class="note">${amountText(i.grams, i)} · P ${r1(i.p)} · C ${r1(i.c)} · F ${r1(i.f)}</span></span>
             <span style="font-weight:600;font-size:14px">${fmt(i.kcal)}</span></button>`).join('')}
         </div>`).join('')}
-        <span class="note center-text">Tap an item to change the amount or group, or to delete it.</span>
+        <span class="note center-text">Tap an item to change it. Swipe left to delete.</span>
       </div>
       <div class="sheet-foot"><a class="btn primary" href="#/add${dayQuery(date)}">${ICON.plusSm} Add food</a></div>`, { tall: true });
+
+    // Swipe an item left to delete it right here; the sheet stays open
+    enableSwipeDelete(sheet.querySelector('.sheet-scroll'), '[data-act="edit"]', async (row) => {
+      const entry = entries.find((x) => x.id === row.dataset.id);
+      const wrap = row.parentElement, section = wrap.parentElement;
+      wrap.style.transition = 'opacity .2s'; wrap.style.opacity = '0';
+      setTimeout(() => { wrap.remove(); if (!section.querySelector('[data-act="edit"]')) section.remove(); }, 200);
+      entries.splice(entries.indexOf(entry), 1);
+      sheet.querySelector('[data-o="allNote"]').textContent = summary(entries);
+      await removeEntries([entry], entry.name);
+    });
 
     sheet.onclick = (e) => {
       const b = e.target.closest('[data-act]');
