@@ -3,9 +3,11 @@
 
 import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry, deleteEntry, getGroups, BUILTIN_GROUPS } from '../store.js';
 import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
-import { back, go, replace, amountSheet, openSheet, closeSheet, toast } from '../ui.js';
+import { back, go, replace, amountSheet, openSheet, closeSheet, toast, star, rememberFoods } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
 import { barcodeMenu } from '../scanner.js';
+
+let favListener = null; // the one live 'star changed' listener for this screen
 
 export default async function add(el, params) {
   const today = dateStr();
@@ -15,6 +17,7 @@ export default async function add(el, params) {
   let [foods, history] = await Promise.all([allFoods(), entriesBetween(addDays(today, -21), today)]);
   history.sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1));
   let tab = params.get('tab') || (history.length ? 'recent' : 'mine');
+  rememberFoods(history.filter((e) => e.foodId).map((e) => ({ id: e.foodId, name: e.name, per100: e.per100, servingG: e.servingG, baseUnit: e.baseUnit, servingQty: e.servingQty, servingUnit: e.servingUnit, gPerMl: e.gPerMl })));
   let query = '';
   let online = { query: '', loading: false, results: null, error: '' }; // USDA search state
   // Select mode on Recent: press and hold an item to start, then tap to tick more, then Add them together
@@ -46,6 +49,7 @@ export default async function add(el, params) {
     return foods.slice().sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  const isFav = (id) => foods.some((f) => f.id === id && f.fav);
   const row = (f, { saved = true } = {}) => {
     const g = f.lastGrams || f.servingG || 100;
     const m = scale(f.per100, g);
@@ -53,7 +57,7 @@ export default async function add(el, params) {
       <button class="list-item grow" data-act="${saved ? 'pick' : 'pickOnline'}" data-id="${esc(f.id)}">
         <span class="grow"><span class="name">${esc(f.name)}${f.brand ? ` <span class="muted" style="font-weight:400">· ${esc(f.brand)}</span>` : ''}</span>
         <span class="sub">${amountText(g, f)} · P ${r1(m.p)} · C ${r1(m.c)} · F ${r1(m.f)}</span></span>
-        <span class="kcal">${fmt(m.kcal)}</span>
+        ${star(f.id, isFav(f.id))}<span class="kcal">${fmt(m.kcal)}</span>
       </button>
       ${saved && tab === 'mine' && !query ? `<a class="edit-link" href="#/create?edit=${esc(f.id)}" aria-label="Edit ${esc(f.name)}">Edit</a>` : ''}
     </div>`;
@@ -67,6 +71,7 @@ export default async function add(el, params) {
       <button class="list-item grow" data-act="pick" data-id="${esc(f.id)}">
         <span class="grow"><span class="name">${esc(f.name)}</span>
         <span class="sub">${amountText(g, { ...f, unit: f.lastUnit })} · ${fmt(m.kcal)} kcal${f.lastGroup ? ` · ${esc(f.lastGroup)}` : ''}</span></span>
+        ${star(f.id, true)}
       </button>
       <button class="quick-add" data-act="quick" data-id="${esc(f.id)}" aria-label="Add ${esc(f.name)} now">＋</button>
     </div>`;
@@ -102,7 +107,7 @@ export default async function add(el, params) {
     const item = (e) => `<button class="list-item recent-item ${selected.has(e.id) ? 'sel' : ''}" data-act="again" data-id="${esc(e.id)}" ${selecting ? `aria-pressed="${selected.has(e.id)}"` : ''}>
       ${selecting ? '<span class="tick" aria-hidden="true"></span>' : ''}
       <span class="grow"><span class="name">${esc(e.name)}</span><span class="sub">${amountText(e.grams, e)} · P ${r1(e.p)} · C ${r1(e.c)} · F ${r1(e.f)}</span></span>
-      <span class="kcal">${fmt(e.kcal)}</span></button>`;
+      ${e.foodId ? star(e.foodId, isFav(e.foodId)) : ''}<span class="kcal">${fmt(e.kcal)}</span></button>`;
     return days.slice(0, 14).map((day) => `
       <div class="stack gap8" style="flex-shrink:0">
         <span class="small muted" style="padding:6px 4px 0;text-transform:uppercase;letter-spacing:.04em">${recentDayName(day.date)}</span>
@@ -171,7 +176,6 @@ export default async function add(el, params) {
       food: f, grams: preset.grams || f.lastGrams || f.servingG || null, group: preset.group || null,
       mode: 'add', note: saved ? '' : note, dayLabel,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
-      onFav: async () => { foods = await allFoods(); render(); },
       // Label a bit different from the database? Fix the numbers, then come back here to add it.
       onEditFood: async (cur) => {
         const savedNow = await saveFood({ ...cur }); // keep it in My foods so the fix sticks (and next scan finds it)
@@ -193,6 +197,7 @@ export default async function add(el, params) {
     render();
     try {
       const results = await searchUSDA(q);
+      rememberFoods(results); // so their stars can save them to My foods
       if (query.trim() === q) online = { query: q, loading: false, results, error: '' };
     } catch (err) {
       online = { query: q, loading: false, results: null, error: err instanceof LookupError ? err.message : 'Search failed. Try again.' };
@@ -334,6 +339,17 @@ export default async function add(el, params) {
       }
     };
   }
+
+  // A star was tapped somewhere (a row or the amount sheet): refresh the list, keeping your place
+  const onFavChange = async () => {
+    if (!el.isConnected || !location.hash.startsWith('#/add')) { window.removeEventListener('favchange', onFavChange); return; }
+    foods = await allFoods();
+    const body = $('list'), y = body.scrollTop;
+    render(); body.scrollTop = y;
+  };
+  if (favListener) window.removeEventListener('favchange', favListener);
+  favListener = onFavChange;
+  window.addEventListener('favchange', onFavChange);
 
   render();
   // Coming back from "Create food" opens the food you just made.

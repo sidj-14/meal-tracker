@@ -89,6 +89,29 @@ export function closeSheet() {
   root.classList.remove('open');
 }
 
+// ---------- favorites star (used everywhere a food appears) ----------
+// star(foodId, on) gives a small ☆/★. It's a <span role=button> because it often sits inside a row that is
+// itself a button. One handler below toggles it anywhere, without opening or adding the row.
+export const star = (fid, on) => `<span class="fav-star ${on ? 'on' : ''}" role="button" tabindex="0" data-act="star" data-fid="${esc(fid)}" aria-pressed="${!!on}" aria-label="Favorite">${on ? '★' : '☆'}</span>`;
+// Foods shown but not saved yet (e.g. online search results), so starring one can save it to My foods
+const unsavedFoods = new Map();
+export function rememberFoods(list) { list.forEach((f) => unsavedFoods.set(f.id, f)); }
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-act="star"]');
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault(); // don't also open, add or select the row
+  const fid = b.dataset.fid;
+  const food = (await getFood(fid)) || unsavedFoods.get(fid);
+  if (!food) return;
+  const on = !food.fav;
+  await saveFood({ ...food, fav: on });
+  document.querySelectorAll(`[data-act="star"][data-fid="${CSS.escape(fid)}"]`).forEach((x) => {
+    x.textContent = on ? '★' : '☆'; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on);
+  });
+  toast(on ? 'Added to favorites' : 'Removed from favorites');
+  window.dispatchEvent(new CustomEvent('favchange', { detail: { id: fid, fav: on } })); // screens refresh if they care
+}, true);
+
 // ---------- toast ----------
 let toastTimer;
 // toast('Saved') or toast('Deleted', { action: 'Undo', onAction }) — the action stays tappable for 4 seconds
@@ -169,6 +192,8 @@ export function enableSwipeDelete(container, selector, onDelete, label = 'Delete
 // mode 'edit' -> onSubmit saves changes, onDelete removes the entry
 export async function amountSheet(opts) {
   const { food, grams, group = null, mode = 'add', remaining, note = '', dayLabel = 'today', onSubmit, onDelete, onEditFood } = opts;
+  if (food.id && food.fav === undefined) food.fav = !!(await getFood(food.id))?.fav; // e.g. a logged entry's food
+  if (food.id) rememberFoods([food]);
   const custom = await getGroups();
   const groups = () => BUILTIN_GROUPS.concat(custom);
   // You can enter the amount in pieces, servings or g/ml (whichever apply to this food).
@@ -189,8 +214,7 @@ export async function amountSheet(opts) {
   const sheet = openSheet(`<div class="sheet-pad">
     <div class="handle"></div>
     <div class="row between baseline gap10">
-      <span class="row gap6" style="align-items:baseline;min-width:0"><span class="h3">${esc(food.name)}</span>${mode === 'add' && food.id
-        ? `<button class="fav-star ${food.fav ? 'on' : ''}" data-act="fav" aria-pressed="${!!food.fav}" aria-label="Favorite">${food.fav ? '★' : '☆'}</button>` : ''}</span>
+      <span class="row gap6" style="align-items:baseline;min-width:0"><span class="h3">${esc(food.name)}</span>${food.id ? star(food.id, food.fav) : ''}</span>
       <span class="big"><span data-o="kcal"></span> <small>kcal</small></span>
     </div>
     ${note || onEditFood ? `<div class="row gap8 wrap" style="margin-top:-8px">${note ? `<span class="note">${esc(note)}</span>` : ''}${onEditFood ? '<button class="link" data-act="editFood" style="font-size:13px;padding:0;color:var(--accent-ink);font-weight:600">Edit calories & macros ›</button>' : ''}</div>` : ''}
@@ -228,6 +252,10 @@ export async function amountSheet(opts) {
   </div>`);
 
   const $ = (k) => sheet.querySelector(`[data-o="${k}"]`);
+  const onFav = (e) => { if (e.detail.id === food.id) food.fav = e.detail.fav; };
+  window.addEventListener('favchange', onFav);
+  new MutationObserver((_, obs) => { if (!sheet.isConnected) { window.removeEventListener('favchange', onFav); obs.disconnect(); } })
+    .observe(document.getElementById('sheet-root'), { childList: true });
 
   function update() {
     const m = scale(food.per100, state.grams);
@@ -324,14 +352,6 @@ export async function amountSheet(opts) {
       if (state.grams <= 0) { toast('Enter an amount'); return; }
       b.disabled = true;
       await onSubmit(state.grams, state.group, state.unit, food); // food may now include pieces
-    } else if (act === 'fav') {
-      // Favorites live on the saved food (a food from search or a scan is saved to My foods now)
-      food.fav = !food.fav;
-      const stored = await getFood(food.id);
-      await saveFood({ ...(stored || food), fav: food.fav });
-      b.textContent = food.fav ? '★' : '☆'; b.classList.toggle('on', food.fav); b.setAttribute('aria-pressed', food.fav);
-      toast(food.fav ? 'Added to favorites' : 'Removed from favorites');
-      opts.onFav?.(food); // let the screen behind refresh (e.g. show the Favorites tab)
     } else if (act === 'editFood') {
       onEditFood(food);
     } else if (act === 'savepieces') {

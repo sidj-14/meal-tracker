@@ -1,17 +1,30 @@
 // Today — calories left, macros left, and the day's entries.
 // '#/today?d=YYYY-MM-DD' shows an earlier day: same screen, fully editable, + adds to that day.
 
-import { getTargets, targetOn, entriesOn, updateEntry, deleteEntry, restoreEntry } from '../store.js';
+import { getTargets, targetOn, entriesOn, updateEntry, deleteEntry, restoreEntry, allFoods } from '../store.js';
 import { esc, fmt, r1, sum, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
-import { tabbar, openSheet, closeSheet, amountSheet, toast, replace, enableSwipeDelete } from '../ui.js';
+import { tabbar, openSheet, closeSheet, amountSheet, toast, replace, enableSwipeDelete, star, rememberFoods } from '../ui.js';
 
 const RING = 2 * Math.PI * 56; // circumference of the calorie ring
+
+let favListener = null; // the one live 'star changed' listener for this screen
 
 export default async function today(el, params = new URLSearchParams()) {
   const date = pickDay(params.get('d'));
   const isToday = date === dateStr();
   const goDay = (d) => replace(`#/today${dayQuery(d)}`); // replace: arrows don't pile up "Back" history
-  const [targetList, entries] = await Promise.all([getTargets(), entriesOn(date)]);
+  const [targetList, entries, foods] = await Promise.all([getTargets(), entriesOn(date), allFoods()]);
+  const favIds = new Set(foods.filter((f) => f.fav).map((f) => f.id));
+  // Keep in step when a star is tapped (so the View all sheet opened afterwards shows it right)
+  const onFavChange = (e) => {
+    if (!el.isConnected || !location.hash.startsWith('#/today')) { window.removeEventListener('favchange', onFavChange); return; }
+    if (e.detail.fav) favIds.add(e.detail.id); else favIds.delete(e.detail.id);
+  };
+  if (favListener) window.removeEventListener('favchange', favListener);
+  favListener = onFavChange;
+  window.addEventListener('favchange', onFavChange);
+  // An entry keeps a copy of its food, so its star still works if the food was deleted from My foods
+  rememberFoods(entries.filter((e) => e.foodId).map((e) => ({ id: e.foodId, name: e.name, per100: e.per100, servingG: e.servingG, baseUnit: e.baseUnit, servingQty: e.servingQty, servingUnit: e.servingUnit, gPerMl: e.gPerMl })));
   const t = targetOn(targetList, date) || { kcal: 2000, p: 0, c: 0, f: 0 };
   entries.sort((a, b) => a.createdAt - b.createdAt);
   const eaten = sum(entries);
@@ -84,7 +97,7 @@ export default async function today(el, params = new URLSearchParams()) {
           ${cards.length ? cards.map((card) => {
             const k = sum(card.items).kcal;
             const sub = card.single ? `${amountText(card.items[0].grams, card.items[0])} · P ${r1(card.items[0].p)} · C ${r1(card.items[0].c)} · F ${r1(card.items[0].f)}` : card.items.map((i) => i.name).join(', ');
-            return `<button class="list-item" data-act="all" data-ids="${card.items.map((i) => i.id).join(',')}" data-name="${esc(card.name)}"><span class="grow"><span class="name">${esc(card.name)}</span><span class="sub">${esc(sub)}</span></span><span class="kcal">${fmt(k)}</span></button>`;
+            return `<button class="list-item" data-act="all" data-ids="${card.items.map((i) => i.id).join(',')}" data-name="${esc(card.name)}"><span class="grow"><span class="name">${esc(card.name)}</span><span class="sub">${esc(sub)}</span></span>${card.single && card.items[0].foodId ? star(card.items[0].foodId, favIds.has(card.items[0].foodId)) : ''}<span class="kcal">${fmt(k)}</span></button>`;
           }).join('') : `<div class="empty">${isToday ? 'Nothing logged yet today.' : 'Nothing logged on this day.'}<br>Tap + below to add food.</div>`}
         </div>
       </div>
@@ -140,7 +153,7 @@ export default async function today(el, params = new URLSearchParams()) {
           <div class="row between baseline" style="padding:8px 0 2px"><span class="title">${esc(s.name)}</span><span class="note" style="font-size:13px">${fmt(sum(s.items).kcal)} kcal</span></div>
           ${s.items.map((i) => `<button class="tile row between" style="border:0;text-align:left;width:100%" data-act="edit" data-id="${i.id}">
             <span class="stack gap6"><span style="font-weight:500;font-size:14px">${esc(i.name)}</span><span class="note">${amountText(i.grams, i)} · P ${r1(i.p)} · C ${r1(i.c)} · F ${r1(i.f)}</span></span>
-            <span style="font-weight:600;font-size:14px">${fmt(i.kcal)}</span></button>`).join('')}
+            <span class="row gap6" style="align-items:center">${i.foodId ? star(i.foodId, favIds.has(i.foodId)) : ''}<span style="font-weight:600;font-size:14px">${fmt(i.kcal)}</span></span></button>`).join('')}
         </div>`).join('')}
         <span class="note center-text">Tap an item to change it. Swipe left to delete.</span>
       </div>
