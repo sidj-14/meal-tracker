@@ -189,7 +189,8 @@ export async function amountSheet(opts) {
   const sheet = openSheet(`<div class="sheet-pad">
     <div class="handle"></div>
     <div class="row between baseline gap10">
-      <span class="h3">${esc(food.name)}</span>
+      <span class="row gap6" style="align-items:baseline;min-width:0"><span class="h3">${esc(food.name)}</span>${mode === 'add' && food.id
+        ? `<button class="fav-star ${food.fav ? 'on' : ''}" data-act="fav" aria-pressed="${!!food.fav}" aria-label="Favorite">${food.fav ? '★' : '☆'}</button>` : ''}</span>
       <span class="big"><span data-o="kcal"></span> <small>kcal</small></span>
     </div>
     ${note || onEditFood ? `<div class="row gap8 wrap" style="margin-top:-8px">${note ? `<span class="note">${esc(note)}</span>` : ''}${onEditFood ? '<button class="link" data-act="editFood" style="font-size:13px;padding:0;color:var(--accent-ink);font-weight:600">Edit calories & macros ›</button>' : ''}</div>` : ''}
@@ -323,6 +324,14 @@ export async function amountSheet(opts) {
       if (state.grams <= 0) { toast('Enter an amount'); return; }
       b.disabled = true;
       await onSubmit(state.grams, state.group, state.unit, food); // food may now include pieces
+    } else if (act === 'fav') {
+      // Favorites live on the saved food (a food from search or a scan is saved to My foods now)
+      food.fav = !food.fav;
+      const stored = await getFood(food.id);
+      await saveFood({ ...(stored || food), fav: food.fav });
+      b.textContent = food.fav ? '★' : '☆'; b.classList.toggle('on', food.fav); b.setAttribute('aria-pressed', food.fav);
+      toast(food.fav ? 'Added to favorites' : 'Removed from favorites');
+      opts.onFav?.(food); // let the screen behind refresh (e.g. show the Favorites tab)
     } else if (act === 'editFood') {
       onEditFood(food);
     } else if (act === 'savepieces') {

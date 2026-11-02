@@ -1,7 +1,7 @@
 // Add food — re-add something you logged before (Recent, by day), pick from My foods, search the USDA database, scan a barcode, or create a food. Choosing a food opens
 // the amount sheet, which adds the entry to today (and saves the food to My foods for next time).
 
-import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry, getGroups, BUILTIN_GROUPS } from '../store.js';
+import { allFoods, getFood, saveFood, getTargets, targetOn, entriesOn, entriesBetween, addEntry, deleteEntry, getGroups, BUILTIN_GROUPS } from '../store.js';
 import { esc, fmt, r1, sum, scale, dateStr, addDays, longDate, dayName, pickDay, dayQuery, amountText, ICON } from '../util.js';
 import { back, go, replace, amountSheet, openSheet, closeSheet, toast } from '../ui.js';
 import { lookupBarcode, searchUSDA, LookupError } from '../food-api.js';
@@ -56,6 +56,19 @@ export default async function add(el, params) {
         <span class="kcal">${fmt(m.kcal)}</span>
       </button>
       ${saved && tab === 'mine' && !query ? `<a class="edit-link" href="#/create?edit=${esc(f.id)}" aria-label="Edit ${esc(f.name)}">Edit</a>` : ''}
+    </div>`;
+  };
+
+  // A favorite: tap the row to open the amount sheet, or ＋ to add it straight away with your usual amount
+  const favRow = (f) => {
+    const g = f.lastGrams || f.servingG || 100;
+    const m = scale(f.per100, g);
+    return `<div class="food-row">
+      <button class="list-item grow" data-act="pick" data-id="${esc(f.id)}">
+        <span class="grow"><span class="name">${esc(f.name)}</span>
+        <span class="sub">${amountText(g, { ...f, unit: f.lastUnit })} · ${fmt(m.kcal)} kcal${f.lastGroup ? ` · ${esc(f.lastGroup)}` : ''}</span></span>
+      </button>
+      <button class="quick-add" data-act="quick" data-id="${esc(f.id)}" aria-label="Add ${esc(f.name)} now">＋</button>
     </div>`;
   };
 
@@ -124,13 +137,18 @@ export default async function add(el, params) {
     if (selecting && (tab !== 'recent' || query.trim())) stopSelecting(); // select mode is only for Recent
     renderSelBar();
     const tabBtn = (key, label) => `<button class="chip ${tab === key && !query ? 'on' : ''}" data-act="tab" data-tab="${key}">${label}</button>`;
-    $('tabs').innerHTML = tabBtn('recent', 'Recent') + tabBtn('mine', 'My foods')
+    const favs = foods.filter((f) => f.fav);
+    if (tab === 'favs' && !favs.length) tab = 'recent';
+    $('tabs').innerHTML = (favs.length ? tabBtn('favs', 'Favorites') : '') + tabBtn('recent', 'Recent') + tabBtn('mine', 'My foods')
       + '<a class="chip dashed link-chip" href="#/create">Create</a>';
 
     const list = visibleFoods();
     let html = '';
     if (query.trim()) {
       html = (list.length ? `<span class="small muted" style="padding:0 4px 2px">My foods</span>${list.map((f) => row(f)).join('')}` : '') + onlineSection();
+    } else if (tab === 'favs') {
+      html = favs.sort((a, b) => a.name.localeCompare(b.name)).map((f) => favRow(f)).join('')
+        + `<span class="note center-text" style="padding:8px">Tap ＋ to add with your usual amount, or tap the food to change it first. Tap ★ on a food's sheet to add or remove favorites.</span>`;
     } else if (tab === 'recent') {
       html = recentSection();
     } else if (!foods.length) {
@@ -153,6 +171,7 @@ export default async function add(el, params) {
       food: f, grams: preset.grams || f.lastGrams || f.servingG || null, group: preset.group || null,
       mode: 'add', note: saved ? '' : note, dayLabel,
       remaining: { kcal: t.kcal - eaten.kcal, p: t.p - eaten.p },
+      onFav: async () => { foods = await allFoods(); render(); },
       // Label a bit different from the database? Fix the numbers, then come back here to add it.
       onEditFood: async (cur) => {
         const savedNow = await saveFood({ ...cur }); // keep it in My foods so the fix sticks (and next scan finds it)
@@ -225,6 +244,14 @@ export default async function add(el, params) {
       render(); $('q').focus(); // keep the keyboard up for the next search
     }
     if (act === 'pick') pick(foods.find((f) => f.id === b.dataset.id));
+    if (act === 'quick') {
+      // One tap: same amount, unit and group as last time; stay here so you can add more
+      const f = foods.find((x) => x.id === b.dataset.id);
+      const g = f.lastGrams || f.servingG || 100;
+      const entry = await addEntry({ ...f, lastUnit: f.lastUnit }, g, f.lastGroup || null, day);
+      b.classList.add('done'); setTimeout(() => b.classList.remove('done'), 900);
+      toast(`Added ${f.name} to ${f.lastGroup || dayLabel}`, { action: 'Undo', onAction: async () => { await deleteEntry(entry.id); toast('Removed'); } });
+    }
     if (act === 'again' && selecting) {
       const id = b.dataset.id;
       if (selected.has(id)) selected.delete(id); else selected.add(id);

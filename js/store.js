@@ -64,7 +64,7 @@ export async function addEntry(food, grams, group, date = dateStr()) {
     servingQty: food.servingQty || null, servingUnit: food.servingUnit || null, gPerMl: food.gPerMl || null, group: group || null, unit: food.lastUnit || null, ...scale(food.per100, grams),
   };
   await db.put('entries', entry);
-  await db.put('foods', { ...food, lastUsed: Date.now(), lastGrams: grams });
+  await db.put('foods', { ...food, lastUsed: Date.now(), lastGrams: grams, lastGroup: group || null });
   return entry;
 }
 // `food` (optional) carries serving details set while editing, e.g. pieces per serving

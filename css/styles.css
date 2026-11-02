@@ -236,3 +236,14 @@ h1, h2, h3 { margin: 0; }
 .swipe-del { position: absolute; top: 0; right: 0; bottom: 0; width: 120px; padding-left: 32px; border: 0; background: #C9615A; color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; opacity: 0; }
 .swipe.moving .swipe-del { opacity: 1; }
 .swipe-row { position: relative; touch-action: pan-y; will-change: transform; }
+
+/* Favorites */
+.fav-star { border: 0; background: none; padding: 0 2px; font-size: 20px; line-height: 1; color: var(--dash); cursor: pointer; flex-shrink: 0; }
+.fav-star.on { color: #D9A441; }
+.quick-add { flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 999px; background: #E6EEE3; color: var(--accent-ink); font-size: 22px; font-weight: 600; cursor: pointer; transition: background .2s, color .2s; }
+.quick-add.done { background: var(--accent); color: #fff; }
+.food-row .quick-add { align-self: center; margin-right: 10px; }
+/* Add food tabs stay on one line; scroll sideways on very narrow phones */
+[data-o="tabs"].chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+[data-o="tabs"].chips::-webkit-scrollbar { display: none; }
+[data-o="tabs"].chips > * { flex-shrink: 0; }
